@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import {
   CalendarDays,
   ClipboardList,
+  Clock3,
+  Images,
   FileText,
   Home,
   LogOut,
@@ -33,15 +35,6 @@ const emptyHistoria = {
   alergias: '',
   medicacionHabitual: '',
   enfermedadesPrevias: '',
-  observaciones: '',
-};
-
-const emptyConsulta = {
-  fecha: new Date().toISOString().slice(0, 10),
-  motivoConsulta: '',
-  evaluacion: '',
-  diagnostico: '',
-  evolucion: '',
   observaciones: '',
 };
 
@@ -160,9 +153,6 @@ function createApiClient(auth) {
     getHistoria: (pacienteId) => request(`/pacientes/${pacienteId}/historia-clinica`),
     updateHistoria: (pacienteId, data) =>
       request(`/pacientes/${pacienteId}/historia-clinica`, { method: 'PUT', body: JSON.stringify(data) }),
-    listConsultas: (pacienteId) => request(`/pacientes/${pacienteId}/consultas`),
-    createConsulta: (pacienteId, data) =>
-      request(`/pacientes/${pacienteId}/consultas`, { method: 'POST', body: JSON.stringify(data) }),
     listProcedimientos: (pacienteId) => request(`/pacientes/${pacienteId}/procedimientos`),
     createProcedimiento: (pacienteId, data) =>
       request(`/pacientes/${pacienteId}/procedimientos`, { method: 'POST', body: JSON.stringify(data) }),
@@ -467,15 +457,22 @@ function PacienteModal({ api, paciente, onClose, onSaved }) {
 function PacientePerfilPage({ api, pacienteId, onBack }) {
   const [paciente, setPaciente] = useState(null);
   const [historia, setHistoria] = useState(null);
+  const [procedimientos, setProcedimientos] = useState([]);
+  const [editingPaciente, setEditingPaciente] = useState(false);
   const [activeTab, setActiveTab] = useState('datos');
   const [error, setError] = useState('');
 
   async function loadPaciente() {
     setError('');
     try {
-      const [nextPaciente, nextHistoria] = await Promise.all([api.getPaciente(pacienteId), api.getHistoria(pacienteId)]);
+      const [nextPaciente, nextHistoria, nextProcedimientos] = await Promise.all([
+        api.getPaciente(pacienteId),
+        api.getHistoria(pacienteId),
+        api.listProcedimientos(pacienteId),
+      ]);
       setPaciente(nextPaciente);
       setHistoria(nextHistoria);
+      setProcedimientos(nextProcedimientos);
     } catch (exception) {
       setError(exception.message);
     }
@@ -488,6 +485,10 @@ function PacientePerfilPage({ api, pacienteId, onBack }) {
   if (error) return <div className="form-error wide">{error}</div>;
   if (!paciente) return <section className="page">Cargando paciente...</section>;
 
+  const proximoControl = procedimientos
+    .filter((item) => item.requiereControl && item.estadoControl === 'PENDIENTE' && item.fechaControl)
+    .sort((a, b) => a.fechaControl.localeCompare(b.fechaControl))[0];
+
   return (
     <section className="page">
       <button className="back-button" onClick={onBack}>Volver a pacientes</button>
@@ -499,21 +500,48 @@ function PacientePerfilPage({ api, pacienteId, onBack }) {
           <p>{paciente.obraSocial ? `${paciente.obraSocial} ${paciente.numeroAfiliado || ''}` : 'Sin obra social cargada'}</p>
         </div>
         <div className="profile-actions">
-          <button className="primary-button" onClick={() => setActiveTab('consultas')}><Plus size={17} />Nueva consulta</button>
+          <button onClick={() => setEditingPaciente(true)}><User size={17} />Editar datos</button>
+          <button onClick={() => setActiveTab('historia')}><FileText size={17} />Editar historia</button>
           <button className="primary-button" onClick={() => setActiveTab('procedimientos')}><Plus size={17} />Nuevo procedimiento</button>
         </div>
       </div>
       <ClinicalSummary historia={historia} />
+      <div className={proximoControl ? 'next-control-card' : 'next-control-card empty'}>
+        <Clock3 size={22} />
+        <div>
+          <span>Próximo control</span>
+          {proximoControl ? (
+            <strong>
+              {formatDate(proximoControl.fechaControl)} · {proximoControl.tipoProcedimiento || proximoControl.nombre}
+            </strong>
+          ) : (
+            <strong>Sin controles pendientes con fecha</strong>
+          )}
+        </div>
+        {proximoControl && <button onClick={() => setActiveTab('procedimientos')}>Ver historial</button>}
+      </div>
       <div className="tabs">
         <button className={activeTab === 'datos' ? 'active' : ''} onClick={() => setActiveTab('datos')}><User size={17} />Datos</button>
         <button className={activeTab === 'historia' ? 'active' : ''} onClick={() => setActiveTab('historia')}><FileText size={17} />Historia clínica</button>
-        <button className={activeTab === 'consultas' ? 'active' : ''} onClick={() => setActiveTab('consultas')}><ClipboardList size={17} />Consultas</button>
         <button className={activeTab === 'procedimientos' ? 'active' : ''} onClick={() => setActiveTab('procedimientos')}><Stethoscope size={17} />Procedimientos</button>
+        <button className="disabled" disabled title="Se incorporará en una próxima etapa"><Images size={17} />Fotografías · próximamente</button>
       </div>
       {activeTab === 'datos' && <DatosPersonales paciente={paciente} />}
       {activeTab === 'historia' && <HistoriaClinicaTab api={api} pacienteId={pacienteId} />}
-      {activeTab === 'consultas' && <ConsultasTab api={api} pacienteId={pacienteId} />}
-      {activeTab === 'procedimientos' && <ProcedimientosTab api={api} pacienteId={pacienteId} />}
+      {activeTab === 'procedimientos' && (
+        <ProcedimientosTab api={api} pacienteId={pacienteId} onItemsLoaded={setProcedimientos} />
+      )}
+      {editingPaciente && (
+        <PacienteModal
+          api={api}
+          paciente={paciente}
+          onClose={() => setEditingPaciente(false)}
+          onSaved={(saved) => {
+            setPaciente(saved);
+            setEditingPaciente(false);
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -577,40 +605,14 @@ function HistoriaClinicaTab({ api, pacienteId }) {
   );
 }
 
-function ConsultasTab({ api, pacienteId }) {
-  return (
-    <TimelineTab
-      title="Nueva consulta"
-      emptyItem={emptyConsulta}
-      loadItems={() => api.listConsultas(pacienteId)}
-      createItem={(data) => api.createConsulta(pacienteId, data)}
-      fields={[
-        ['fecha', 'Fecha', 'date'],
-        ['motivoConsulta', 'Motivo de consulta', 'textarea'],
-        ['evaluacion', 'Evaluación', 'textarea'],
-        ['diagnostico', 'Diagnóstico', 'textarea'],
-        ['evolucion', 'Evolución', 'textarea'],
-        ['observaciones', 'Observaciones', 'textarea'],
-      ]}
-      renderItem={(item) => (
-        <>
-          <strong>{item.fecha}</strong>
-          <p>{item.motivoConsulta}</p>
-          {item.evaluacion && <span>Evaluación: {item.evaluacion}</span>}
-          {item.diagnostico && <span>Diagnóstico: {item.diagnostico}</span>}
-        </>
-      )}
-    />
-  );
-}
-
-function ProcedimientosTab({ api, pacienteId }) {
+function ProcedimientosTab({ api, pacienteId, onItemsLoaded }) {
   return (
     <TimelineTab
       title="Nuevo procedimiento"
       emptyItem={emptyProcedimiento}
       loadItems={() => api.listProcedimientos(pacienteId)}
       createItem={(data) => api.createProcedimiento(pacienteId, data)}
+      onItemsLoaded={onItemsLoaded}
       fields={[
         ['fecha', 'Fecha', 'date'],
         ['nombre', 'Nombre del procedimiento', 'text'],
@@ -629,11 +631,15 @@ function ProcedimientosTab({ api, pacienteId }) {
       ]}
       renderItem={(item) => (
         <>
-          <strong>{item.fecha} · {item.tipoProcedimiento || item.nombre}</strong>
+          <strong>{formatDate(item.fecha)} · {item.tipoProcedimiento || item.nombre}</strong>
           {item.zonaTratada && <span>Zona: {item.zonaTratada}</span>}
-          {item.productoUtilizado && <span>Producto: {item.productoUtilizado}</span>}
+          {item.productoUtilizado && (
+            <span>Producto: {item.productoUtilizado}{item.marca ? ` · ${item.marca}` : ''}</span>
+          )}
+          {item.lote && <span>Lote: {item.lote}{item.fechaVencimiento ? ` · Vence ${formatDate(item.fechaVencimiento)}` : ''}</span>}
+          {item.cantidadUtilizada && <span>Cantidad: {item.cantidadUtilizada}</span>}
           {item.descripcion && <p>{item.descripcion}</p>}
-          {item.requiereControl && <span>Control: {item.fechaControl || 'pendiente de fecha'} · {item.estadoControl}</span>}
+          {item.requiereControl && <span className="control-detail">Control: {item.fechaControl ? formatDate(item.fechaControl) : 'pendiente de fecha'} · {formatControlStatus(item.estadoControl)}</span>}
           {item.observaciones && <span>{item.observaciones}</span>}
         </>
       )}
@@ -641,13 +647,15 @@ function ProcedimientosTab({ api, pacienteId }) {
   );
 }
 
-function TimelineTab({ title, emptyItem, loadItems, createItem, fields, renderItem }) {
+function TimelineTab({ title, emptyItem, loadItems, createItem, fields, renderItem, onItemsLoaded }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyItem);
   const [error, setError] = useState('');
 
   async function load() {
-    setItems(await loadItems());
+    const nextItems = await loadItems();
+    setItems(nextItems);
+    onItemsLoaded?.(nextItems);
   }
 
   useEffect(() => {
@@ -725,7 +733,7 @@ function DynamicField({ label, type, value, onChange }) {
           <option value="Mesoterapia">Mesoterapia</option>
           <option value="PRP">PRP</option>
           <option value="Peeling">Peeling</option>
-          <option value="Otros">Otros</option>
+          <option value="Otro">Otro</option>
         </select>
       </label>
     );
@@ -771,6 +779,21 @@ function Info({ label, value, wide = false }) {
       <strong>{value || '-'}</strong>
     </div>
   );
+}
+
+function formatDate(value) {
+  if (!value) return '';
+  const [year, month, day] = value.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function formatControlStatus(value) {
+  return {
+    PENDIENTE: 'Pendiente',
+    REALIZADO: 'Realizado',
+    CANCELADO: 'Cancelado',
+    NO_REQUIERE: 'No requiere',
+  }[value] || value;
 }
 
 function toPacienteForm(paciente) {
