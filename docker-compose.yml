@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: consultorio_postgres
+    environment:
+      POSTGRES_DB: consultorio
+      POSTGRES_USER: consultorio_user
+      POSTGRES_PASSWORD: consultorio_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - consultorio_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  consultorio_postgres_data:

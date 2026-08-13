@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 210" role="img" aria-labelledby="title desc">
+  <title id="title">Logo Dra. Florencia Liberi</title>
+  <desc id="desc">Marca minimalista con iniciales F y L.</desc>
+  <rect width="160" height="210" fill="#ffffff"/>
+  <path d="M43 27 L96 29" fill="none" stroke="#222222" stroke-width="6" stroke-linecap="square"/>
+  <path d="M43 27 L39 143" fill="none" stroke="#222222" stroke-width="12" stroke-linecap="square"/>
+  <path d="M43 82 L92 82" fill="none" stroke="#222222" stroke-width="6" stroke-linecap="square"/>
+  <circle cx="43" cy="168" r="9" fill="#222222"/>
+  <path d="M119 75 L121 192" fill="none" stroke="#222222" stroke-width="12" stroke-linecap="square"/>
+  <path d="M70 192 L121 193" fill="none" stroke="#222222" stroke-width="6" stroke-linecap="square"/>
+</svg>
