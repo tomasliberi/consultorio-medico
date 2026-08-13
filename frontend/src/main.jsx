@@ -206,6 +206,7 @@ function LoginPage({ onLogin }) {
           </button>
         </form>
       </section>
+      <AppFooter />
     </main>
   );
 }
@@ -237,9 +238,16 @@ function Shell({ children, view, onNavigate, onLogout, user }) {
           Cerrar sesión
         </button>
       </aside>
-      <main className="workspace">{children}</main>
+      <main className="workspace">
+        <div className="workspace-content">{children}</div>
+        <AppFooter />
+      </main>
     </div>
   );
+}
+
+function AppFooter() {
+  return <footer className="app-footer">Diseñada por Tomas Liberi y Sol Liberi</footer>;
 }
 
 function SidebarUserProfile({ user }) {

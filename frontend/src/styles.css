@@ -25,7 +25,9 @@ button {
 .login-page {
   display: grid;
   min-height: 100vh;
-  place-items: center;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  align-items: center;
   padding: 24px;
   background:
     linear-gradient(135deg, rgba(255, 250, 246, 0.94), rgba(239, 222, 213, 0.82)),
@@ -324,10 +326,35 @@ textarea:focus {
 }
 
 .workspace {
+  display: flex;
   position: relative;
   min-width: 0;
+  min-height: 100vh;
+  flex-direction: column;
   overflow: hidden;
   padding: 54px 60px;
+}
+
+.workspace-content {
+  width: 100%;
+  flex: 1;
+}
+
+.app-footer {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  margin-top: 48px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(185, 132, 117, 0.28);
+  color: #8a7a73;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.login-page .app-footer {
+  margin-top: 24px;
 }
 
 .workspace::before {
