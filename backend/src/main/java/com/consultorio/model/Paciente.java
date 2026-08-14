@@ -41,9 +41,8 @@ public class Paciente {
     @Column(nullable = false, unique = true, length = 20)
     private String dni;
 
-    @NotNull
     @Past
-    @Column(nullable = false)
+    @Column
     private LocalDate fechaNacimiento;
 
     @Column(length = 40)

@@ -2,6 +2,8 @@ package com.consultorio.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -11,14 +13,24 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.math.BigDecimal;
 
 @Entity
-@Table(name = "consultas")
+@Table(
+    name = "consultas",
+    uniqueConstraints = @UniqueConstraint(name = "uk_consultas_fecha_hora", columnNames = {"fecha", "hora"})
+)
 public class Consulta {
+
+    public enum TipoCita {
+        CONSULTA, PROCEDIMIENTO
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -31,6 +43,19 @@ public class Consulta {
     @NotNull
     @Column(nullable = false)
     private LocalDate fecha;
+
+    @Column(nullable = true)
+    private LocalTime hora;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private TipoCita tipoCita = TipoCita.CONSULTA;
+
+    @Column(nullable = false)
+    private Boolean seniaPagada = false;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal montoSenia = BigDecimal.ZERO;
 
     @NotBlank
     @Column(nullable = false, columnDefinition = "TEXT")
@@ -84,6 +109,38 @@ public class Consulta {
 
     public void setFecha(LocalDate fecha) {
         this.fecha = fecha;
+    }
+
+    public LocalTime getHora() {
+        return hora;
+    }
+
+    public void setHora(LocalTime hora) {
+        this.hora = hora;
+    }
+
+    public TipoCita getTipoCita() {
+        return tipoCita;
+    }
+
+    public void setTipoCita(TipoCita tipoCita) {
+        this.tipoCita = tipoCita;
+    }
+
+    public Boolean getSeniaPagada() {
+        return seniaPagada;
+    }
+
+    public void setSeniaPagada(Boolean seniaPagada) {
+        this.seniaPagada = seniaPagada;
+    }
+
+    public BigDecimal getMontoSenia() {
+        return montoSenia;
+    }
+
+    public void setMontoSenia(BigDecimal montoSenia) {
+        this.montoSenia = montoSenia == null ? BigDecimal.ZERO : montoSenia;
     }
 
     public String getMotivoConsulta() {
