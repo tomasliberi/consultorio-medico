@@ -6,6 +6,7 @@ import com.consultorio.exception.ResourceNotFoundException;
 import com.consultorio.model.Consulta;
 import com.consultorio.model.Paciente;
 import com.consultorio.repository.ConsultaRepository;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +49,20 @@ public class ConsultaService {
         Consulta consulta = buscarEntidad(id);
         aplicarDatos(consulta, request);
         return toResponse(consulta);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConsultaResponse> obtenerPorRangoFechas(LocalDate fechaInicio, LocalDate fechaFin) {
+        return consultaRepository.findByFechaBetweenOrderByFechaDescHoraDesc(fechaInicio, fechaFin).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConsultaResponse> obtenerPorFecha(LocalDate fecha) {
+        return consultaRepository.findByFechaOrderByHoraAsc(fecha).stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     private Consulta buscarEntidad(Long id) {

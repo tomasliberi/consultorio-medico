@@ -36,6 +36,12 @@ public class GlobalExceptionHandler {
                 .body(new ApiError(LocalDateTime.now(), "Hay campos invalidos.", fields));
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest()
+                .body(new ApiError(LocalDateTime.now(), exception.getMessage(), null));
+    }
+
     public record ApiError(
             LocalDateTime timestamp,
             String message,

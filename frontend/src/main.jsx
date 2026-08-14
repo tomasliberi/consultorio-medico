@@ -15,6 +15,7 @@ import {
   Users,
 } from 'lucide-react';
 import './styles.css';
+import CalendarComponent from './CalendarComponent.jsx';
 
 const API_URL = 'http://localhost:8080/api';
 
@@ -97,7 +98,8 @@ function App() {
         }
       }}
     >
-      {view === 'inicio' && <HomePage onOpenPacientes={() => setView('pacientes')} />}
+      {view === 'inicio' && <HomePage onOpenPacientes={() => setView('pacientes')} onOpenAgenda={() => setView('agenda')} />}
+      {view === 'agenda' && <CalendarComponent api={api} />}
       {view === 'pacientes' && (
         <PacientesPage
           api={api}
@@ -156,6 +158,11 @@ function createApiClient(auth) {
     listProcedimientos: (pacienteId) => request(`/pacientes/${pacienteId}/procedimientos`),
     createProcedimiento: (pacienteId, data) =>
       request(`/pacientes/${pacienteId}/procedimientos`, { method: 'POST', body: JSON.stringify(data) }),
+    listAgendaEventos: (fechaInicio, fechaFin) =>
+      request(`/agenda/eventos?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`),
+    agendarCita: (data) => request('/agenda/agendar', { method: 'POST', body: JSON.stringify(data) }),
+    actualizarCita: (id, data) => request(`/agenda/citas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    cancelarCita: (id) => request(`/agenda/citas/${id}`, { method: 'DELETE' }),
   };
 }
 
@@ -221,6 +228,10 @@ function Shell({ children, view, onNavigate, onLogout, user }) {
             <Users size={19} />
             Pacientes
           </button>
+          <button className={view === 'agenda' ? 'active' : ''} onClick={() => onNavigate('agenda')}>
+            <CalendarDays size={19} />
+            Agenda
+          </button>
         </nav>
         <SidebarUserProfile user={user} />
         <button className="logout-button" onClick={onLogout}>
@@ -265,7 +276,7 @@ function LogoMark({ small = false }) {
   );
 }
 
-function HomePage({ onOpenPacientes }) {
+function HomePage({ onOpenPacientes, onOpenAgenda }) {
   const today = new Intl.DateTimeFormat('es-AR', {
     weekday: 'long',
     day: '2-digit',
@@ -298,10 +309,10 @@ function HomePage({ onOpenPacientes }) {
           <strong>Nuevo paciente</strong>
           <span>Cargar datos personales e iniciar historia clínica</span>
         </button>
-        <button className="metric-card disabled">
+        <button className="metric-card" onClick={onOpenAgenda}>
           <span className="card-icon"><CalendarDays size={24} /></span>
           <strong>Agenda</strong>
-          <span>Preparada para una agenda interna simple</span>
+          <span>Ver calendario y agendar un nuevo turno</span>
         </button>
         <button className="metric-card disabled">
           <span className="card-icon"><ClipboardList size={24} /></span>

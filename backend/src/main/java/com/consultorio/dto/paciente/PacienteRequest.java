@@ -10,7 +10,7 @@ public record PacienteRequest(
         @NotBlank String nombre,
         @NotBlank String apellido,
         @NotBlank String dni,
-        @NotNull @Past LocalDate fechaNacimiento,
+        @Past LocalDate fechaNacimiento,
         String telefono,
         @Email String email,
         String obraSocial,
