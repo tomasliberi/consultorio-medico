@@ -2,6 +2,7 @@ package com.consultorio.controller;
 
 import com.consultorio.dto.procedimiento.ProcedimientoRequest;
 import com.consultorio.dto.procedimiento.ProcedimientoResponse;
+import com.consultorio.dto.procedimiento.ControlPendienteResponse;
 import com.consultorio.service.ProcedimientoService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -40,6 +41,11 @@ public class ProcedimientoController {
     @GetMapping("/procedimientos/{id}")
     public ProcedimientoResponse obtenerPorId(@PathVariable Long id) {
         return procedimientoService.obtenerPorId(id);
+    }
+
+    @GetMapping("/procedimientos/controles-pendientes")
+    public List<ControlPendienteResponse> listarControlesPendientes() {
+        return procedimientoService.listarControlesPendientes();
     }
 
     @PutMapping("/procedimientos/{id}")

@@ -2,6 +2,7 @@ package com.consultorio.service;
 
 import com.consultorio.dto.procedimiento.ProcedimientoRequest;
 import com.consultorio.dto.procedimiento.ProcedimientoResponse;
+import com.consultorio.dto.procedimiento.ControlPendienteResponse;
 import com.consultorio.exception.ResourceNotFoundException;
 import com.consultorio.model.EstadoControl;
 import com.consultorio.model.Paciente;
@@ -36,6 +37,22 @@ public class ProcedimientoService {
     @Transactional(readOnly = true)
     public ProcedimientoResponse obtenerPorId(Long id) {
         return toResponse(buscarEntidad(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ControlPendienteResponse> listarControlesPendientes() {
+        return procedimientoRepository.findByEstadoControlOrderByFechaControlAsc(EstadoControl.PENDIENTE).stream()
+                .map(procedimiento -> new ControlPendienteResponse(
+                        procedimiento.getId(),
+                        procedimiento.getPaciente().getId(),
+                        procedimiento.getPaciente().getNombre(),
+                        procedimiento.getPaciente().getApellido(),
+                        procedimiento.getNombre(),
+                        procedimiento.getZonaTratada(),
+                        procedimiento.getFecha(),
+                        procedimiento.getFechaControl()
+                ))
+                .toList();
     }
 
     @Transactional
