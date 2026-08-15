@@ -99,13 +99,13 @@ export default function CalendarComponent({ api }) {
       const payload = { ...form, pacienteId: Number(form.pacienteId), hora: `${form.hora}:00`, montoSenia: monto, seniaPagada: monto > 0 };
       if (editingEventId) await api.actualizarCita(editingEventId, payload);
       else await api.agendarCita(payload);
-      setShowForm(false); await loadEvents();
+      setShowForm(false); await loadEvents(); window.dispatchEvent(new CustomEvent('consultorio:agenda-updated'));
     } catch (e) { setError(e.message); } finally { setSaving(false); }
   }
 
   async function deleteTurno() {
     if (!window.confirm('¿Cancelar este turno?')) return;
-    try { await api.cancelarCita(selectedEvent.id); setSelectedEvent(null); await loadEvents(); }
+    try { await api.cancelarCita(selectedEvent.id); setSelectedEvent(null); await loadEvents(); window.dispatchEvent(new CustomEvent('consultorio:agenda-updated')); }
     catch (e) { setError(e.message); }
   }
 
