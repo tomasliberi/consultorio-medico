@@ -1,6 +1,7 @@
 package com.consultorio.dto.paciente;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 
 public record PacienteResponse(
         Long id,
@@ -14,6 +15,11 @@ public record PacienteResponse(
         String email,
         String obraSocial,
         String numeroAfiliado,
-        String observacionesGenerales
+        String observacionesGenerales,
+        String antecedentes,
+        String alergias,
+        String medicacionHabitual,
+        LocalDate proximaCitaFecha,
+        LocalTime proximaCitaHora
 ) {
 }

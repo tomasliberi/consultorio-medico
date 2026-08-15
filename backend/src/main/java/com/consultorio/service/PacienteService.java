@@ -4,12 +4,17 @@ import com.consultorio.dto.paciente.PacienteRequest;
 import com.consultorio.dto.paciente.PacienteResponse;
 import com.consultorio.exception.DuplicateResourceException;
 import com.consultorio.exception.ResourceNotFoundException;
+import com.consultorio.model.Consulta;
 import com.consultorio.model.HistoriaClinica;
 import com.consultorio.model.Paciente;
+import com.consultorio.repository.ConsultaRepository;
+import com.consultorio.repository.HistoriaClinicaRepository;
 import com.consultorio.repository.PacienteRepository;
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.LocalTime;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,9 +22,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class PacienteService {
 
     private final PacienteRepository pacienteRepository;
+    private final HistoriaClinicaRepository historiaClinicaRepository;
+    private final ConsultaRepository consultaRepository;
 
-    public PacienteService(PacienteRepository pacienteRepository) {
+    public PacienteService(
+            PacienteRepository pacienteRepository,
+            HistoriaClinicaRepository historiaClinicaRepository,
+            ConsultaRepository consultaRepository
+    ) {
         this.pacienteRepository = pacienteRepository;
+        this.historiaClinicaRepository = historiaClinicaRepository;
+        this.consultaRepository = consultaRepository;
     }
 
     @Transactional(readOnly = true)
@@ -88,6 +101,8 @@ public class PacienteService {
     }
 
     private PacienteResponse toResponse(Paciente paciente) {
+        HistoriaClinica historiaClinica = historiaClinicaRepository.findByPacienteId(paciente.getId()).orElse(null);
+        Optional<Consulta> proximaCita = buscarProximaCita(paciente.getId());
         return new PacienteResponse(
                 paciente.getId(),
                 String.format("HC-%06d", paciente.getId()),
@@ -100,8 +115,25 @@ public class PacienteService {
                 paciente.getEmail(),
                 paciente.getObraSocial(),
                 paciente.getNumeroAfiliado(),
-                paciente.getObservacionesGenerales()
+                paciente.getObservacionesGenerales(),
+                historiaClinica != null ? historiaClinica.getAntecedentes() : null,
+                historiaClinica != null ? historiaClinica.getAlergias() : null,
+                historiaClinica != null ? historiaClinica.getMedicacionHabitual() : null,
+                proximaCita.map(Consulta::getFecha).orElse(null),
+                proximaCita.map(Consulta::getHora).orElse(null)
         );
+    }
+
+    private Optional<Consulta> buscarProximaCita(Long pacienteId) {
+        LocalDate hoy = LocalDate.now();
+        LocalTime ahora = LocalTime.now().withSecond(0).withNano(0);
+
+        return consultaRepository.findByPacienteIdOrderByFechaAscHoraAsc(pacienteId).stream()
+                .filter(consulta -> consulta.getFecha() != null)
+                .filter(consulta -> consulta.getHora() != null)
+                .filter(consulta -> consulta.getFecha().isAfter(hoy)
+                        || (consulta.getFecha().isEqual(hoy) && !consulta.getHora().isBefore(ahora)))
+                .findFirst();
     }
 
     private Integer calcularEdad(LocalDate fechaNacimiento) {
