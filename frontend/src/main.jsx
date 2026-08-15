@@ -11,6 +11,7 @@ import {
   Plus,
   Search,
   Stethoscope,
+  Trash2,
   User,
   Users,
 } from 'lucide-react';
@@ -98,7 +99,9 @@ function App() {
         }
       }}
     >
-      {view === 'inicio' && <HomePage onOpenPacientes={() => setView('pacientes')} onOpenAgenda={() => setView('agenda')} />}
+      {view === 'inicio' && <HomePage api={api} onOpenPacientes={() => setView('pacientes')} onOpenAgenda={() => setView('agenda')} onOpenToday={() => setView('hoy')} onOpenControls={() => setView('controles')} />}
+      {view === 'hoy' && <TurnosHoyPage api={api} onOpenAgenda={() => setView('agenda')} />}
+      {view === 'controles' && <ControlesPendientesPage api={api} onOpenPaciente={(id) => { setSelectedPacienteId(id); setView('perfil'); }} />}
       {view === 'agenda' && <CalendarComponent api={api} />}
       {view === 'pacientes' && (
         <PacientesPage
@@ -157,12 +160,14 @@ function createApiClient(auth) {
     getPaciente: (id) => request(`/pacientes/${id}`),
     createPaciente: (data) => request('/pacientes', { method: 'POST', body: JSON.stringify(data) }),
     updatePaciente: (id, data) => request(`/pacientes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deletePaciente: (id) => request(`/pacientes/${id}`, { method: 'DELETE' }),
     getHistoria: (pacienteId) => request(`/pacientes/${pacienteId}/historia-clinica`),
     updateHistoria: (pacienteId, data) =>
       request(`/pacientes/${pacienteId}/historia-clinica`, { method: 'PUT', body: JSON.stringify(data) }),
     listProcedimientos: (pacienteId) => request(`/pacientes/${pacienteId}/procedimientos`),
     createProcedimiento: (pacienteId, data) =>
       request(`/pacientes/${pacienteId}/procedimientos`, { method: 'POST', body: JSON.stringify(data) }),
+    listControlesPendientes: () => request('/procedimientos/controles-pendientes'),
     listAgendaEventos: (fechaInicio, fechaFin) =>
       request(`/agenda/eventos?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`),
     agendarCita: (data) => request('/agenda/agendar', { method: 'POST', body: JSON.stringify(data) }),
@@ -237,6 +242,10 @@ function Shell({ children, view, onNavigate, onLogout, user }) {
             <CalendarDays size={19} />
             Agenda
           </button>
+          <button className={view === 'hoy' ? 'active' : ''} onClick={() => onNavigate('hoy')}>
+            <Clock3 size={19} />
+            Turnos de hoy
+          </button>
         </nav>
         <SidebarUserProfile user={user} />
         <button className="logout-button" onClick={onLogout}>
@@ -281,13 +290,35 @@ function LogoMark({ small = false }) {
   );
 }
 
-function HomePage({ onOpenPacientes, onOpenAgenda }) {
+function HomePage({ api, onOpenPacientes, onOpenAgenda, onOpenToday, onOpenControls }) {
+  const [todayAppointments, setTodayAppointments] = useState([]);
+  const [pendingControls, setPendingControls] = useState([]);
   const today = new Intl.DateTimeFormat('es-AR', {
     weekday: 'long',
     day: '2-digit',
     month: 'long',
     year: 'numeric',
   }).format(new Date());
+
+  const loadTodayAppointments = useCallback(async () => {
+    const date = new Date().toLocaleDateString('en-CA');
+    try {
+      const items = await api.listAgendaEventos(date, date);
+      setTodayAppointments(items.sort((a, b) => (a.hora || '').localeCompare(b.hora || '')));
+    } catch {
+      setTodayAppointments([]);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    loadTodayAppointments();
+    api.listControlesPendientes().then(setPendingControls).catch(() => setPendingControls([]));
+    window.addEventListener('consultorio:agenda-updated', loadTodayAppointments);
+    return () => window.removeEventListener('consultorio:agenda-updated', loadTodayAppointments);
+  }, [api, loadTodayAppointments]);
+
+  const currentTime = new Date().toTimeString().slice(0, 5);
+  const nextAppointment = todayAppointments.find((item) => item.hora?.slice(0, 5) >= currentTime);
 
   return (
     <section className="page">
@@ -299,9 +330,9 @@ function HomePage({ onOpenPacientes, onOpenAgenda }) {
         </div>
       </div>
       <div className="daily-panel">
-        <div><span>Turnos del día</span><strong>Módulo pendiente</strong></div>
-        <div><span>Próximo paciente</span><strong>Sin agenda cargada</strong></div>
-        <div><span>Controles pendientes</span><strong>Se activan con procedimientos</strong></div>
+        <button type="button" onClick={onOpenToday}><span>Turnos del día</span><strong>{todayAppointments.length === 1 ? '1 turno programado' : `${todayAppointments.length} turnos programados`}</strong></button>
+        <button type="button" onClick={onOpenToday}><span>Próximo paciente</span><strong>{nextAppointment ? `${nextAppointment.hora.slice(0, 5)} · ${nextAppointment.pacienteNombre} ${nextAppointment.pacienteApellido}` : 'Sin próximos turnos hoy'}</strong></button>
+        <button type="button" onClick={onOpenControls}><span>Controles pendientes</span><strong>{pendingControls.length === 1 ? '1 control pendiente' : `${pendingControls.length} controles pendientes`}</strong></button>
       </div>
       <div className="home-grid">
         <button className="metric-card" onClick={onOpenPacientes}>
@@ -319,12 +350,92 @@ function HomePage({ onOpenPacientes, onOpenAgenda }) {
           <strong>Agenda</strong>
           <span>Ver calendario y agendar un nuevo turno</span>
         </button>
-        <button className="metric-card disabled">
+        <button className="metric-card" onClick={onOpenControls}>
           <span className="card-icon"><ClipboardList size={24} /></span>
           <strong>Controles</strong>
-          <span>Próximamente listado de controles pendientes</span>
+          <span>Ver controles pendientes y acceder a la ficha de cada paciente</span>
         </button>
       </div>
+    </section>
+  );
+}
+
+function ControlesPendientesPage({ api, onOpenPaciente }) {
+  const [controles, setControles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.listControlesPendientes()
+      .then(setControles)
+      .catch((exception) => setError(exception.message))
+      .finally(() => setLoading(false));
+  }, [api]);
+
+  const today = new Date().toLocaleDateString('en-CA');
+
+  return <section className="page controls-page">
+    <div className="page-header"><div><span className="eyebrow">Seguimiento</span><h2>Controles pendientes</h2><p className="header-subtitle">Próximos controles indicados en procedimientos.</p></div></div>
+    {error && <div className="form-error wide">{error}</div>}
+    {loading && <div className="today-empty">Cargando controles…</div>}
+    {!loading && controles.length === 0 && <div className="today-empty"><ClipboardList size={30}/><strong>No hay controles pendientes</strong><span>Los controles aparecerán acá cuando un procedimiento los requiera.</span></div>}
+    {!loading && controles.length > 0 && <div className="controls-list">
+      {controles.map((control) => <article className={control.fechaControl && control.fechaControl < today ? 'control-card overdue' : 'control-card'} key={control.procedimientoId}>
+        <div className="control-date"><span>Fecha de control</span><strong>{control.fechaControl ? formatDate(control.fechaControl) : 'Sin fecha'}</strong>{control.fechaControl && control.fechaControl < today && <em>Vencido</em>}</div>
+        <div className="control-patient"><strong>{control.pacienteNombre} {control.pacienteApellido}</strong><span>{control.procedimiento}{control.zonaTratada ? ` · ${control.zonaTratada}` : ''}</span></div>
+        <button className="secondary-button" onClick={() => onOpenPaciente(control.pacienteId)}>Ver paciente</button>
+      </article>)}
+    </div>}
+  </section>;
+}
+
+function TurnosHoyPage({ api, onOpenAgenda }) {
+  const [turnos, setTurnos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const today = new Date().toLocaleDateString('en-CA');
+
+  const loadTurnos = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const items = await api.listAgendaEventos(today, today);
+      setTurnos(items.sort((a, b) => (a.hora || '').localeCompare(b.hora || '')));
+    } catch (exception) {
+      setError(exception.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [api, today]);
+
+  useEffect(() => {
+    loadTurnos();
+    window.addEventListener('consultorio:agenda-updated', loadTurnos);
+    return () => window.removeEventListener('consultorio:agenda-updated', loadTurnos);
+  }, [loadTurnos]);
+
+  const todayLabel = new Intl.DateTimeFormat('es-AR', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  }).format(new Date());
+
+  return (
+    <section className="page today-page">
+      <div className="page-header">
+        <div><span className="eyebrow">Agenda diaria</span><h2>Turnos de hoy</h2><p className="header-subtitle">{todayLabel}</p></div>
+        <button className="primary-button" onClick={onOpenAgenda}><CalendarDays size={18} />Ver agenda completa</button>
+      </div>
+      {error && <div className="form-error wide">{error}</div>}
+      <div className="today-summary"><strong>{turnos.length}</strong><span>{turnos.length === 1 ? 'turno programado' : 'turnos programados'}</span></div>
+      {loading && <div className="today-empty">Cargando turnos…</div>}
+      {!loading && turnos.length === 0 && <div className="today-empty"><CalendarDays size={30} /><strong>No hay turnos para hoy</strong><span>Podés crear uno desde la agenda.</span><button className="primary-button" onClick={onOpenAgenda}>Agendar turno</button></div>}
+      {!loading && turnos.length > 0 && <div className="today-appointments">
+        {turnos.map((turno) => <article className="today-appointment" key={turno.id}>
+          <div className="today-time">{turno.hora?.slice(0, 5)}</div>
+          <div className="today-patient"><strong>{turno.pacienteNombre} {turno.pacienteApellido}</strong><span>{turno.motivoConsulta || 'Sin motivo especificado'}</span></div>
+          <span className="today-type">{turno.tipoCita === 'PROCEDIMIENTO' ? 'Procedimiento' : 'Consulta'}</span>
+          <span className={turno.seniaPagada ? 'today-deposit paid' : 'today-deposit pending'}>{turno.seniaPagada ? 'Seña pagada' : 'Seña pendiente'}</span>
+        </article>)}
+      </div>}
     </section>
   );
 }
@@ -335,6 +446,7 @@ function PacientesPage({ api, onOpenPaciente }) {
   const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
 
   async function loadPacientes(query = buscar) {
     setLoading(true);
@@ -355,6 +467,24 @@ function PacientesPage({ api, onOpenPaciente }) {
   async function handleSearch(event) {
     event.preventDefault();
     await loadPacientes(buscar);
+  }
+
+  async function handleDelete(paciente) {
+    const confirmed = window.confirm(
+      `¿Eliminar a ${paciente.nombre} ${paciente.apellido}?\n\nTambién se eliminarán su historia clínica, procedimientos y turnos. Esta acción no se puede deshacer.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingId(paciente.id);
+    setError('');
+    try {
+      await api.deletePaciente(paciente.id);
+      await loadPacientes(buscar);
+    } catch (exception) {
+      setError(exception.message);
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   return (
@@ -400,6 +530,10 @@ function PacientesPage({ api, onOpenPaciente }) {
                 <td className="row-actions">
                   <button onClick={() => onOpenPaciente(paciente.id)}>Ver</button>
                   <button onClick={() => setEditing(paciente)}>Editar</button>
+                  <button className="delete-patient-button" disabled={deletingId === paciente.id} onClick={() => handleDelete(paciente)}>
+                    <Trash2 size={16} />
+                    {deletingId === paciente.id ? 'Eliminando…' : 'Eliminar'}
+                  </button>
                 </td>
               </tr>
             ))}

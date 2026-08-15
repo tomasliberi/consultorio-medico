@@ -82,6 +82,12 @@ public class PacienteService {
         return toResponse(paciente);
     }
 
+    @Transactional
+    public void eliminar(Long id) {
+        Paciente paciente = buscarEntidad(id);
+        pacienteRepository.delete(paciente);
+    }
+
     @Transactional(readOnly = true)
     public Paciente buscarEntidad(Long id) {
         return pacienteRepository.findById(id)

@@ -33,6 +33,8 @@ export default function CalendarComponent({ api }) {
   const [newPatient, setNewPatient] = useState(emptyPatient);
   const [savingPatient, setSavingPatient] = useState(false);
   const [patientNotice, setPatientNotice] = useState('');
+  const [patientSearch, setPatientSearch] = useState('');
+  const [showPatientSuggestions, setShowPatientSuggestions] = useState(false);
   const [error, setError] = useState('');
 
   const loadEvents = useCallback(async () => {
@@ -56,16 +58,35 @@ export default function CalendarComponent({ api }) {
     return workTimes.filter((time) => time >= currentTime);
   }, [form.fecha]);
 
+  const filteredPacientes = useMemo(() => {
+    const query = patientSearch.trim().toLocaleLowerCase('es');
+    if (!query) return pacientes;
+    return pacientes.filter((patient) =>
+      `${patient.nombre} ${patient.apellido} ${patient.dni || ''}`
+        .toLocaleLowerCase('es')
+        .includes(query),
+    );
+  }, [pacientes, patientSearch]);
+
+  function selectPatient(patient) {
+    setForm((current) => ({ ...current, pacienteId: String(patient.id) }));
+    setPatientSearch(`${patient.apellido}, ${patient.nombre} · DNI ${patient.dni}`);
+    setShowPatientSuggestions(false);
+  }
+
   function openForm(start = new Date()) {
     const selectedTime = format(start, 'HH:mm');
     setForm({ ...emptyForm, fecha: format(start, 'yyyy-MM-dd'), hora: workTimes.includes(selectedTime) ? selectedTime : '' });
     setEditingEventId(null); setShowNewPatient(false); setNewPatient(emptyPatient);
-    setError(''); setPatientNotice(''); setShowForm(true);
+    setError(''); setPatientNotice(''); setPatientSearch(''); setShowPatientSuggestions(false); setShowForm(true);
   }
 
   function editEvent(event) {
     setForm({ pacienteId: String(event.pacienteId), fecha: event.fecha, hora: event.hora.slice(0, 5), tipoCita: event.tipoCita, motivoConsulta: event.motivoConsulta || '', observaciones: event.observaciones || '', seniaPagada: Boolean(event.seniaPagada), montoSenia: event.montoSenia || '' });
-    setEditingEventId(event.id); setSelectedEvent(null); setShowNewPatient(false); setError(''); setPatientNotice(''); setShowForm(true);
+    const patient = pacientes.find((item) => item.id === event.pacienteId);
+    setEditingEventId(event.id); setSelectedEvent(null); setShowNewPatient(false); setError(''); setPatientNotice('');
+    setPatientSearch(patient ? `${patient.apellido}, ${patient.nombre} · DNI ${patient.dni}` : `${event.pacienteApellido}, ${event.pacienteNombre}`);
+    setShowPatientSuggestions(false); setShowForm(true);
   }
 
   async function createPatient() {
@@ -78,7 +99,7 @@ export default function CalendarComponent({ api }) {
       const parts = newPatient.nombreCompleto.trim().split(/\s+/);
       const saved = await api.createPaciente({ nombre: parts.shift(), apellido: parts.join(' ') || '-', dni: newPatient.dni.trim(), fechaNacimiento: null, telefono: '', email: '', obraSocial: '', numeroAfiliado: '', observacionesGenerales: '' });
       setPacientes((current) => [...current.filter((patient) => patient.id !== saved.id), saved].sort((a, b) => a.apellido.localeCompare(b.apellido)));
-      setForm((current) => ({ ...current, pacienteId: String(saved.id) }));
+      selectPatient(saved);
       setPatientNotice(`${saved.nombre} ${saved.apellido} fue guardado y seleccionado.`);
       setShowNewPatient(false); setNewPatient(emptyPatient);
     } catch (e) { setError(e.message); } finally { setSavingPatient(false); }
@@ -123,7 +144,24 @@ export default function CalendarComponent({ api }) {
       <form className="agenda-form" onSubmit={submitTurno} noValidate>
         {error && <div className="form-error agenda-full modal-form-error">{error}</div>}
         {patientNotice && <div className="success-message agenda-full">{patientNotice}</div>}
-        <div className="agenda-full patient-picker"><label>Paciente<select required value={form.pacienteId} onChange={(e) => setForm({...form,pacienteId:e.target.value})}><option value="">Seleccionar paciente existente</option>{pacientes.map((p)=><option key={p.id} value={p.id}>{p.apellido}, {p.nombre} · DNI {p.dni}</option>)}</select></label><div className="patient-picker-actions"><button type="button" className="new-patient-button" onClick={()=>{setNewPatient(emptyPatient);setShowNewPatient(!showNewPatient)}}><Plus size={16}/>Crear paciente nuevo</button></div></div>
+        <div className="agenda-full patient-picker">
+          <label>Paciente
+            <div className="patient-autocomplete">
+              <input type="search" required placeholder="Buscar por nombre, apellido o DNI" value={patientSearch} autoComplete="off"
+                onFocus={() => setShowPatientSuggestions(true)}
+                onChange={(e) => { setPatientSearch(e.target.value); setForm({...form,pacienteId:''}); setShowPatientSuggestions(true); }}
+              />
+              {showPatientSuggestions && <div className="patient-suggestions">
+                {filteredPacientes.length === 0 && <div className="patient-no-results">No se encontraron pacientes</div>}
+                {filteredPacientes.map((p) => <button type="button" key={p.id} onClick={() => selectPatient(p)}>
+                  <strong>{p.apellido}, {p.nombre}</strong><span>DNI {p.dni}</span>
+                </button>)}
+              </div>}
+            </div>
+          </label>
+          {form.pacienteId && <div className="patient-selected">Paciente seleccionado</div>}
+          <div className="patient-picker-actions"><button type="button" className="new-patient-button" onClick={()=>{setNewPatient(emptyPatient);setShowNewPatient(!showNewPatient)}}><Plus size={16}/>Crear paciente nuevo</button></div>
+        </div>
         {showNewPatient && <div className="new-patient-panel agenda-full"><div className="new-patient-heading"><strong>Datos del nuevo paciente</strong><span>Solo necesitamos estos datos para reservar el turno.</span></div><label>Nombre completo<input placeholder="Nombre y apellido" value={newPatient.nombreCompleto} onChange={(e)=>setNewPatient({...newPatient,nombreCompleto:e.target.value})}/></label><label>DNI<input value={newPatient.dni} onChange={(e)=>setNewPatient({...newPatient,dni:e.target.value})}/></label><div className="new-patient-save"><button type="button" className="primary-button" disabled={savingPatient} onClick={createPatient}>{savingPatient?'Guardando…':'Guardar y seleccionar paciente'}</button></div></div>}
         <label>Fecha<input required type="date" min={format(new Date(),'yyyy-MM-dd')} value={form.fecha} onChange={(e)=>setForm({...form,fecha:e.target.value,hora:''})}/></label><label>Hora<select required value={form.hora} onChange={(e)=>setForm({...form,hora:e.target.value})}><option value="">Seleccionar horario</option>{availableTimes.map((time)=><option key={time} value={time}>{time}</option>)}</select></label>
         <label className="agenda-full">Tipo<select value={form.tipoCita} onChange={(e)=>setForm({...form,tipoCita:e.target.value})}><option value="CONSULTA">Consulta</option><option value="PROCEDIMIENTO">Procedimiento</option></select></label>
