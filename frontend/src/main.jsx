@@ -18,7 +18,7 @@ import {
 import './styles.css';
 import CalendarComponent from './CalendarComponent.jsx';
 
-const API_URL = 'http://localhost:8080/api';
+const API_URL = '/api';
 
 const emptyPaciente = {
   nombre: '',
@@ -177,9 +177,9 @@ function createApiClient(auth) {
 }
 
 function LoginPage({ onLogin }) {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
-  const [error, setError] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] =useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(event) {
