@@ -36,6 +36,8 @@ export default function CalendarComponent({ api }) {
   const [patientSearch, setPatientSearch] = useState('');
   const [showPatientSuggestions, setShowPatientSuggestions] = useState(false);
   const [error, setError] = useState('');
+  const [serverTimes, setServerTimes] = useState([]);
+  const [loadingTimes, setLoadingTimes] = useState(false);
 
   const loadEvents = useCallback(async () => {
     setLoading(true); setError('');
@@ -46,6 +48,34 @@ export default function CalendarComponent({ api }) {
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
   useEffect(() => { api.listPacientes('').then(setPacientes).catch((e) => setError(e.message)); }, [api]);
+  useEffect(() => {
+    if (!form.fecha) {
+      setServerTimes([]);
+      return undefined;
+    }
+    let active = true;
+    setLoadingTimes(true);
+    api.listHorariosDisponibles(form.fecha)
+      .then((response) => {
+        if (active) {
+          const times = (response.horariosDisponibles || []).map((time) => time.slice(0, 5));
+          setServerTimes(times);
+          if (!editingEventId) {
+            setForm((current) => current.fecha === form.fecha && !times.includes(current.hora)
+              ? { ...current, hora: '' }
+              : current);
+          }
+        }
+      })
+      .catch((exception) => {
+        if (active) {
+          setServerTimes([]);
+          setError(exception.message);
+        }
+      })
+      .finally(() => { if (active) setLoadingTimes(false); });
+    return () => { active = false; };
+  }, [api, editingEventId, form.fecha]);
 
   const calendarEvents = useMemo(() => events.map((event) => {
     const start = toLocalDate(event.fecha, event.hora);
@@ -53,10 +83,14 @@ export default function CalendarComponent({ api }) {
   }), [events]);
 
   const availableTimes = useMemo(() => {
-    if (form.fecha !== format(new Date(), 'yyyy-MM-dd')) return workTimes;
+    let times = serverTimes;
+    if (editingEventId && form.hora && !times.includes(form.hora)) {
+      times = [...times, form.hora].sort();
+    }
+    if (form.fecha !== format(new Date(), 'yyyy-MM-dd')) return times;
     const currentTime = format(new Date(), 'HH:mm');
-    return workTimes.filter((time) => time >= currentTime);
-  }, [form.fecha]);
+    return times.filter((time) => time >= currentTime);
+  }, [editingEventId, form.fecha, form.hora, serverTimes]);
 
   const filteredPacientes = useMemo(() => {
     const query = patientSearch.trim().toLocaleLowerCase('es');
@@ -163,7 +197,7 @@ export default function CalendarComponent({ api }) {
           <div className="patient-picker-actions"><button type="button" className="new-patient-button" onClick={()=>{setNewPatient(emptyPatient);setShowNewPatient(!showNewPatient)}}><Plus size={16}/>Crear paciente nuevo</button></div>
         </div>
         {showNewPatient && <div className="new-patient-panel agenda-full"><div className="new-patient-heading"><strong>Datos del nuevo paciente</strong><span>Solo necesitamos estos datos para reservar el turno.</span></div><label>Nombre completo<input placeholder="Nombre y apellido" value={newPatient.nombreCompleto} onChange={(e)=>setNewPatient({...newPatient,nombreCompleto:e.target.value})}/></label><label>DNI<input value={newPatient.dni} onChange={(e)=>setNewPatient({...newPatient,dni:e.target.value})}/></label><div className="new-patient-save"><button type="button" className="primary-button" disabled={savingPatient} onClick={createPatient}>{savingPatient?'Guardando…':'Guardar y seleccionar paciente'}</button></div></div>}
-        <label>Fecha<input required type="date" min={format(new Date(),'yyyy-MM-dd')} value={form.fecha} onChange={(e)=>setForm({...form,fecha:e.target.value,hora:''})}/></label><label>Hora<select required value={form.hora} onChange={(e)=>setForm({...form,hora:e.target.value})}><option value="">Seleccionar horario</option>{availableTimes.map((time)=><option key={time} value={time}>{time}</option>)}</select></label>
+        <label>Fecha<input required type="date" min={format(new Date(),'yyyy-MM-dd')} value={form.fecha} onChange={(e)=>setForm({...form,fecha:e.target.value,hora:''})}/></label><label>Hora<select required disabled={loadingTimes || !form.fecha} value={form.hora} onChange={(e)=>setForm({...form,hora:e.target.value})}><option value="">{loadingTimes ? 'Cargando horarios…' : availableTimes.length ? 'Seleccionar horario' : 'Sin horarios disponibles'}</option>{availableTimes.map((time)=><option key={time} value={time}>{time}</option>)}</select></label>
         <label className="agenda-full">Tipo<select value={form.tipoCita} onChange={(e)=>setForm({...form,tipoCita:e.target.value})}><option value="CONSULTA">Consulta</option><option value="PROCEDIMIENTO">Procedimiento</option></select></label>
         <label className="agenda-full">Motivo<input required placeholder="Ej.: control, aplicación, evaluación" value={form.motivoConsulta} onChange={(e)=>setForm({...form,motivoConsulta:e.target.value})}/></label>
         <label className="agenda-full">Observaciones<textarea value={form.observaciones} onChange={(e)=>setForm({...form,observaciones:e.target.value})}/></label>

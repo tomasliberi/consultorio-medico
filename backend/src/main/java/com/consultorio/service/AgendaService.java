@@ -12,9 +12,11 @@ import com.consultorio.model.Paciente;
 import com.consultorio.repository.ConsultaRepository;
 import com.consultorio.repository.DisponibilidadRepository;
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AgendaService {
+
+    private static final ZoneId AGENDA_ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
+    private static final LocalTime DEFAULT_OPENING = LocalTime.of(6, 0);
+    private static final LocalTime DEFAULT_CLOSING = LocalTime.of(21, 0);
+    private static final int DEFAULT_DURATION_MINUTES = 30;
 
     private final ConsultaRepository consultaRepository;
     private final DisponibilidadRepository disponibilidadRepository;
@@ -52,20 +59,15 @@ public class AgendaService {
         List<Disponibilidad> disponibilidades = disponibilidadRepository
                 .findByDiaSemanaAndActivoTrue(diaSemana);
 
-        if (disponibilidades.isEmpty()) {
-            return new HorariosDisponiblesResponse(new ArrayList<>());
-        }
-
-        Disponibilidad disponibilidad = disponibilidades.get(0);
         List<Consulta> citasDelDia = consultaRepository.findByFechaOrderByHoraAsc(fecha);
 
         List<LocalTime> horariosDisponibles = new ArrayList<>();
-        LocalTime horaActual = disponibilidad.getHoraInicio();
-        LocalTime horaFin = disponibilidad.getHoraFin();
-        int duracion = disponibilidad.getDuracionCitasMinutos();
+        LocalTime horaActual = disponibilidades.isEmpty() ? DEFAULT_OPENING : disponibilidades.get(0).getHoraInicio();
+        LocalTime horaFin = disponibilidades.isEmpty() ? DEFAULT_CLOSING : disponibilidades.get(0).getHoraFin();
+        int duracion = disponibilidades.isEmpty() ? DEFAULT_DURATION_MINUTES : disponibilidades.get(0).getDuracionCitasMinutos();
 
         while (horaActual.plusMinutes(duracion).compareTo(horaFin) <= 0) {
-            if (!estaOcupado(horaActual, horaActual.plusMinutes(duracion), citasDelDia)) {
+            if (!estaOcupado(horaActual, horaActual.plusMinutes(duracion), citasDelDia, duracion)) {
                 horariosDisponibles.add(horaActual);
             }
             horaActual = horaActual.plusMinutes(duracion);
@@ -109,7 +111,7 @@ public class AgendaService {
         Consulta consulta = consultaRepository.findById(citaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cita no encontrada."));
         Paciente paciente = pacienteService.buscarEntidad(request.pacienteId());
-        validarFechaYHorarioLaboral(request.fecha(), request.hora());
+        validarDisponibilidad(request.fecha(), request.hora());
         validarSinConflictos(request.fecha(), request.hora(), citaId);
 
         consulta.setPaciente(paciente);
@@ -128,6 +130,12 @@ public class AgendaService {
 
     @Transactional
     public DisponibilidadResponse crearDisponibilidad(DisponibilidadRequest request) {
+        if (!request.horaInicio().isBefore(request.horaFin())) {
+            throw new IllegalArgumentException("La hora de inicio debe ser anterior a la hora de fin.");
+        }
+        if (request.duracionCitasMinutos() != null && request.duracionCitasMinutos() <= 0) {
+            throw new IllegalArgumentException("La duración de las citas debe ser mayor que cero.");
+        }
         Disponibilidad disponibilidad = new Disponibilidad();
         disponibilidad.setDiaSemana(Disponibilidad.DiaSemana.valueOf(request.diaSemana()));
         disponibilidad.setHoraInicio(request.horaInicio());
@@ -181,6 +189,7 @@ public class AgendaService {
                 .findByDiaSemanaAndActivoTrue(diaSemana);
 
         if (disponibilidades.isEmpty()) {
+            validarAlineacionDelTurno(hora, DEFAULT_OPENING, DEFAULT_CLOSING, DEFAULT_DURATION_MINUTES);
             return;
         }
 
@@ -189,17 +198,28 @@ public class AgendaService {
             hora.isAfter(disponibilidad.getHoraFin().minusMinutes(disponibilidad.getDuracionCitasMinutos()))) {
             throw new IllegalArgumentException("El horario no está dentro de la disponibilidad establecida.");
         }
+        validarAlineacionDelTurno(
+                hora,
+                disponibilidad.getHoraInicio(),
+                disponibilidad.getHoraFin(),
+                disponibilidad.getDuracionCitasMinutos()
+        );
+    }
+
+    private void validarAlineacionDelTurno(LocalTime hora, LocalTime inicio, LocalTime fin, int duracion) {
+        long minutosDesdeInicio = Duration.between(inicio, hora).toMinutes();
+        if (hora.isAfter(fin.minusMinutes(duracion)) || minutosDesdeInicio < 0 || minutosDesdeInicio % duracion != 0) {
+            throw new IllegalArgumentException("El horario seleccionado no corresponde a un turno disponible.");
+        }
     }
 
     private void validarFechaYHorarioLaboral(LocalDate fecha, LocalTime hora) {
-        LocalDateTime ahora = LocalDateTime.now().withSecond(0).withNano(0);
+        LocalDateTime ahora = LocalDateTime.now(AGENDA_ZONE).withSecond(0).withNano(0);
         if (LocalDateTime.of(fecha, hora).isBefore(ahora)) {
             throw new IllegalArgumentException("No se pueden agendar turnos en una fecha u hora anterior.");
         }
 
-        LocalTime apertura = LocalTime.of(6, 0);
-        LocalTime cierre = LocalTime.of(21, 0);
-        if (hora.isBefore(apertura) || hora.isAfter(cierre)) {
+        if (hora.isBefore(DEFAULT_OPENING) || hora.isAfter(DEFAULT_CLOSING)) {
             throw new IllegalArgumentException("El horario laboral es de 06:00 a 21:00.");
         }
     }
@@ -230,29 +250,22 @@ public class AgendaService {
         }
 
         Disponibilidad disponibilidad = disponibilidades.get(0);
-        LocalTime horaFin = hora.plusMinutes(disponibilidad.getDuracionCitasMinutos());
+        int duracion = disponibilidad.getDuracionCitasMinutos();
+        LocalTime horaFin = hora.plusMinutes(duracion);
 
-        if (estaOcupado(hora, horaFin, citasDelDia)) {
+        if (estaOcupado(hora, horaFin, citasDelDia, duracion)) {
             throw new IllegalArgumentException("El horario ya está ocupado.");
         }
     }
 
-    private boolean estaOcupado(LocalTime horaInicio, LocalTime horaFin, List<Consulta> citas) {
+    private boolean estaOcupado(LocalTime horaInicio, LocalTime horaFin, List<Consulta> citas, int duracion) {
         for (Consulta cita : citas) {
             if (cita.getHora() != null) {
                 LocalTime horaActual = cita.getHora();
-                DayOfWeek dayOfWeek = LocalDate.now().getDayOfWeek();
-                Disponibilidad.DiaSemana diaSemana = convertDayOfWeek(dayOfWeek);
-                List<Disponibilidad> disponibilidades = disponibilidadRepository
-                        .findByDiaSemanaAndActivoTrue(diaSemana);
-                
-                if (!disponibilidades.isEmpty()) {
-                    int duracion = disponibilidades.get(0).getDuracionCitasMinutos();
-                    LocalTime horaFinalCita = horaActual.plusMinutes(duracion);
-                    
-                    if (horaInicio.isBefore(horaFinalCita) && horaFin.isAfter(horaActual)) {
-                        return true;
-                    }
+                LocalTime horaFinalCita = horaActual.plusMinutes(duracion);
+
+                if (horaInicio.isBefore(horaFinalCita) && horaFin.isAfter(horaActual)) {
+                    return true;
                 }
             }
         }

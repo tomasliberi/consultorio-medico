@@ -13,6 +13,7 @@ import com.consultorio.repository.PacienteRepository;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PacienteService {
+
+    private static final ZoneId AGENDA_ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
 
     private final PacienteRepository pacienteRepository;
     private final HistoriaClinicaRepository historiaClinicaRepository;
@@ -131,8 +134,8 @@ public class PacienteService {
     }
 
     private Optional<Consulta> buscarProximaCita(Long pacienteId) {
-        LocalDate hoy = LocalDate.now();
-        LocalTime ahora = LocalTime.now().withSecond(0).withNano(0);
+        LocalDate hoy = LocalDate.now(AGENDA_ZONE);
+        LocalTime ahora = LocalTime.now(AGENDA_ZONE).withSecond(0).withNano(0);
 
         return consultaRepository.findByPacienteIdOrderByFechaAscHoraAsc(pacienteId).stream()
                 .filter(consulta -> consulta.getFecha() != null)

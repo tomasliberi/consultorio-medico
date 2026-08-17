@@ -1,6 +1,8 @@
 package com.consultorio.dto.agenda;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.DecimalMin;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.math.BigDecimal;
@@ -17,11 +19,13 @@ public record AgendarCitaRequest(
 
     String tipoCita,
 
+    @NotBlank
     String motivoConsulta,
 
     String observaciones,
 
     Boolean seniaPagada,
 
+    @DecimalMin("0.00")
     BigDecimal montoSenia
 ) {}

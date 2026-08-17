@@ -18,7 +18,14 @@ import {
 import './styles.css';
 import CalendarComponent from './CalendarComponent.jsx';
 
-const API_URL = 'http://localhost:8080/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+
+function localDateValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 const emptyPaciente = {
   nombre: '',
@@ -40,8 +47,8 @@ const emptyHistoria = {
   observaciones: '',
 };
 
-const emptyProcedimiento = {
-  fecha: new Date().toISOString().slice(0, 10),
+const createEmptyProcedimiento = () => ({
+  fecha: localDateValue(),
   nombre: '',
   tipoProcedimiento: '',
   zonaTratada: '',
@@ -55,12 +62,19 @@ const emptyProcedimiento = {
   requiereControl: false,
   fechaControl: '',
   estadoControl: 'NO_REQUIERE',
-};
+});
 
 function App() {
   const [auth, setAuth] = useState(() => {
-    const stored = localStorage.getItem('consultorio_auth');
-    return stored ? JSON.parse(stored) : null;
+    const stored = sessionStorage.getItem('consultorio_auth') || localStorage.getItem('consultorio_auth');
+    if (!stored) return null;
+    try {
+      return JSON.parse(stored);
+    } catch {
+      sessionStorage.removeItem('consultorio_auth');
+      localStorage.removeItem('consultorio_auth');
+      return null;
+    }
   });
   const [view, setView] = useState('inicio');
   const [selectedPacienteId, setSelectedPacienteId] = useState(null);
@@ -71,13 +85,26 @@ function App() {
     photoUrl: '/profile-florencia.jfif',
   };
 
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      sessionStorage.removeItem('consultorio_auth');
+      localStorage.removeItem('consultorio_auth');
+      setAuth(null);
+      setSelectedPacienteId(null);
+    };
+    window.addEventListener('consultorio:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('consultorio:unauthorized', handleUnauthorized);
+  }, []);
+
   function handleLogin(nextAuth) {
-    localStorage.setItem('consultorio_auth', JSON.stringify(nextAuth));
+    localStorage.removeItem('consultorio_auth');
+    sessionStorage.setItem('consultorio_auth', JSON.stringify(nextAuth));
     setAuth(nextAuth);
     setView('inicio');
   }
 
   function handleLogout() {
+    sessionStorage.removeItem('consultorio_auth');
     localStorage.removeItem('consultorio_auth');
     setAuth(null);
     setSelectedPacienteId(null);
@@ -125,7 +152,10 @@ function App() {
 }
 
 function createApiClient(auth) {
-  const headers = auth ? { Authorization: `Basic ${btoa(`${auth.username}:${auth.password}`)}` } : {};
+  const encodedCredentials = auth
+    ? btoa(String.fromCharCode(...new TextEncoder().encode(`${auth.username}:${auth.password}`)))
+    : null;
+  const headers = encodedCredentials ? { Authorization: `Basic ${encodedCredentials}` } : {};
 
   async function request(path, options = {}) {
     const response = await fetch(`${API_URL}${path}`, {
@@ -145,7 +175,12 @@ function createApiClient(auth) {
       } catch {
         message = response.status === 401 ? 'Usuario o contraseña incorrectos.' : message;
       }
-      throw new Error(message);
+      const requestError = new Error(message);
+      requestError.status = response.status;
+      if (response.status === 401 && auth) {
+        window.dispatchEvent(new Event('consultorio:unauthorized'));
+      }
+      throw requestError;
     }
 
     if (response.status === 204) {
@@ -170,6 +205,8 @@ function createApiClient(auth) {
     listControlesPendientes: () => request('/procedimientos/controles-pendientes'),
     listAgendaEventos: (fechaInicio, fechaFin) =>
       request(`/agenda/eventos?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`),
+    listHorariosDisponibles: (fecha) =>
+      request(`/agenda/horarios-disponibles?fecha=${encodeURIComponent(fecha)}`),
     agendarCita: (data) => request('/agenda/agendar', { method: 'POST', body: JSON.stringify(data) }),
     actualizarCita: (id, data) => request(`/agenda/citas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     cancelarCita: (id) => request(`/agenda/citas/${id}`, { method: 'DELETE' }),
@@ -177,8 +214,8 @@ function createApiClient(auth) {
 }
 
 function LoginPage({ onLogin }) {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -204,8 +241,8 @@ function LoginPage({ onLogin }) {
         <h1>Consultorio</h1>
         <p>Dra. Florencia Liberi · Medicina Estética</p>
         <form className="login-form" onSubmit={handleSubmit}>
-          <Field label="Usuario" value={username} onChange={setUsername} />
-          <Field label="Contraseña" type="password" value={password} onChange={setPassword} />
+          <Field label="Usuario" value={username} onChange={setUsername} autoComplete="username" required />
+          <Field label="Contraseña" type="password" value={password} onChange={setPassword} autoComplete="current-password" required />
           {error && <div className="form-error">{error}</div>}
           <button type="submit" className="primary-button" disabled={loading}>
             <User size={18} />
@@ -301,7 +338,7 @@ function HomePage({ api, onOpenPacientes, onOpenAgenda, onOpenToday, onOpenContr
   }).format(new Date());
 
   const loadTodayAppointments = useCallback(async () => {
-    const date = new Date().toLocaleDateString('en-CA');
+    const date = localDateValue();
     try {
       const items = await api.listAgendaEventos(date, date);
       setTodayAppointments(items.sort((a, b) => (a.hora || '').localeCompare(b.hora || '')));
@@ -372,7 +409,7 @@ function ControlesPendientesPage({ api, onOpenPaciente }) {
       .finally(() => setLoading(false));
   }, [api]);
 
-  const today = new Date().toLocaleDateString('en-CA');
+  const today = localDateValue();
 
   return <section className="page controls-page">
     <div className="page-header"><div><span className="eyebrow">Seguimiento</span><h2>Controles pendientes</h2><p className="header-subtitle">Próximos controles indicados en procedimientos.</p></div></div>
@@ -393,7 +430,7 @@ function TurnosHoyPage({ api, onOpenAgenda }) {
   const [turnos, setTurnos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const today = new Date().toLocaleDateString('en-CA');
+  const today = localDateValue();
 
   const loadTurnos = useCallback(async () => {
     setLoading(true);
@@ -524,7 +561,7 @@ function PacientesPage({ api, onOpenPaciente }) {
               <tr key={paciente.id}>
                 <td><strong>{paciente.apellido}, {paciente.nombre}</strong><span>{paciente.email || paciente.numeroHistoriaClinica}</span></td>
                 <td>{paciente.dni}</td>
-                <td>{paciente.edad}</td>
+                <td>{paciente.edad ?? '-'}</td>
                 <td>{paciente.telefono || '-'}</td>
                 <td>{paciente.obraSocial || '-'}</td>
                 <td className="row-actions">
@@ -559,7 +596,14 @@ function PacientesPage({ api, onOpenPaciente }) {
 function PacienteModal({ api, paciente, onClose, onSaved }) {
   const [form, setForm] = useState(toPacienteForm(paciente));
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
   const isEdit = Boolean(paciente.id);
+
+  useEffect(() => {
+    const closeOnEscape = (event) => { if (event.key === 'Escape' && !saving) onClose(); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose, saving]);
 
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -568,17 +612,20 @@ function PacienteModal({ api, paciente, onClose, onSaved }) {
   async function handleSubmit(event) {
     event.preventDefault();
     setError('');
+    setSaving(true);
     try {
       const saved = isEdit ? await api.updatePaciente(paciente.id, form) : await api.createPaciente(form);
       onSaved(saved);
     } catch (exception) {
       setError(exception.message);
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
-    <div className="modal-backdrop">
-      <section className="modal">
+    <div className="modal-backdrop" onMouseDown={() => { if (!saving) onClose(); }}>
+      <section className="modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <h3>{isEdit ? 'Editar paciente' : 'Nuevo paciente'}</h3>
           <button onClick={onClose}>Cerrar</button>
@@ -587,7 +634,7 @@ function PacienteModal({ api, paciente, onClose, onSaved }) {
           <Field label="Nombre" value={form.nombre} onChange={(value) => update('nombre', value)} required />
           <Field label="Apellido" value={form.apellido} onChange={(value) => update('apellido', value)} required />
           <Field label="DNI" value={form.dni} onChange={(value) => update('dni', value)} required />
-          <Field label="Fecha de nacimiento" type="date" value={form.fechaNacimiento} onChange={(value) => update('fechaNacimiento', value)} required />
+          <Field label="Fecha de nacimiento" type="date" value={form.fechaNacimiento} onChange={(value) => update('fechaNacimiento', value)} max={localDateValue()} />
           <Field label="Teléfono" value={form.telefono} onChange={(value) => update('telefono', value)} />
           <Field label="Email" type="email" value={form.email} onChange={(value) => update('email', value)} />
           <Field label="Obra social" value={form.obraSocial} onChange={(value) => update('obraSocial', value)} />
@@ -596,7 +643,7 @@ function PacienteModal({ api, paciente, onClose, onSaved }) {
           {error && <div className="form-error wide">{error}</div>}
           <div className="form-actions">
             <button type="button" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="primary-button patient-action-button">Guardar</button>
+            <button type="submit" className="primary-button patient-action-button" disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</button>
           </div>
         </form>
       </section>
@@ -652,7 +699,7 @@ function PacientePerfilPage({ api, pacienteId, onBack, onOpenAgenda }) {
         <div>
           <span className="eyebrow">Perfil del paciente</span>
           <h2>{paciente.nombre} {paciente.apellido}</h2>
-          <p>{paciente.numeroHistoriaClinica} · DNI {paciente.dni} · {paciente.edad} años · {paciente.telefono || 'Sin teléfono'}</p>
+          <p>{paciente.numeroHistoriaClinica} · DNI {paciente.dni} · {paciente.edad == null ? 'Edad no informada' : `${paciente.edad} años`} · {paciente.telefono || 'Sin teléfono'}</p>
           <p>{paciente.obraSocial ? `${paciente.obraSocial} ${paciente.numeroAfiliado || ''}` : 'Sin obra social cargada'}</p>
         </div>
         <div className="profile-actions">
@@ -719,7 +766,7 @@ function DatosPersonales({ paciente }) {
       <Info label="Nombre" value={paciente.nombre} />
       <Info label="Apellido" value={paciente.apellido} />
       <Info label="DNI" value={paciente.dni} />
-      <Info label="Fecha de nacimiento" value={paciente.fechaNacimiento} />
+      <Info label="Fecha de nacimiento" value={paciente.fechaNacimiento ? formatDate(paciente.fechaNacimiento) : null} />
       <Info label="Teléfono" value={paciente.telefono} />
       <Info label="Email" value={paciente.email} />
       <Info label="Obra social" value={paciente.obraSocial} />
@@ -732,10 +779,18 @@ function DatosPersonales({ paciente }) {
 function HistoriaClinicaTab({ api, pacienteId, onSaved }) {
   const [form, setForm] = useState(emptyHistoria);
   const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.getHistoria(pacienteId).then((historia) => setForm({ ...emptyHistoria, ...historia }));
-  }, [pacienteId]);
+    setLoading(true);
+    setError('');
+    api.getHistoria(pacienteId)
+      .then((historia) => setForm({ ...emptyHistoria, ...historia }))
+      .catch((exception) => setError(exception.message))
+      .finally(() => setLoading(false));
+  }, [api, pacienteId]);
 
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -744,10 +799,20 @@ function HistoriaClinicaTab({ api, pacienteId, onSaved }) {
   async function handleSubmit(event) {
     event.preventDefault();
     setStatus('');
-    await api.updateHistoria(pacienteId, form);
-    setStatus('Historia clínica guardada.');
-    onSaved?.();
+    setError('');
+    setSaving(true);
+    try {
+      await api.updateHistoria(pacienteId, form);
+      setStatus('Historia clínica guardada.');
+      onSaved?.();
+    } catch (exception) {
+      setError(exception.message);
+    } finally {
+      setSaving(false);
+    }
   }
+
+  if (loading) return <div className="empty-state">Cargando historia clínica…</div>;
 
   return (
     <form className="clinical-form" onSubmit={handleSubmit}>
@@ -757,7 +822,8 @@ function HistoriaClinicaTab({ api, pacienteId, onSaved }) {
       <TextArea label="Enfermedades previas" value={form.enfermedadesPrevias} onChange={(value) => update('enfermedadesPrevias', value)} />
       <TextArea label="Observaciones" value={form.observaciones} onChange={(value) => update('observaciones', value)} />
       {status && <div className="success-message">{status}</div>}
-      <button className="primary-button" type="submit">Guardar historia</button>
+      {error && <div className="form-error">{error}</div>}
+      <button className="primary-button" type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar historia'}</button>
     </form>
   );
 }
@@ -765,7 +831,7 @@ function ProcedimientosTab({ api, pacienteId, onItemsLoaded }) {
   return (
     <TimelineTab
       title="Nuevo procedimiento"
-      emptyItem={emptyProcedimiento}
+      createEmptyItem={createEmptyProcedimiento}
       loadItems={() => api.listProcedimientos(pacienteId)}
       createItem={(data) => api.createProcedimiento(pacienteId, data)}
       onItemsLoaded={onItemsLoaded}
@@ -803,15 +869,24 @@ function ProcedimientosTab({ api, pacienteId, onItemsLoaded }) {
   );
 }
 
-function TimelineTab({ title, emptyItem, loadItems, createItem, fields, renderItem, onItemsLoaded }) {
+function TimelineTab({ title, createEmptyItem, loadItems, createItem, fields, renderItem, onItemsLoaded }) {
   const [items, setItems] = useState([]);
-  const [form, setForm] = useState(emptyItem);
+  const [form, setForm] = useState(() => createEmptyItem());
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   async function load() {
-    const nextItems = await loadItems();
-    setItems(nextItems);
-    onItemsLoaded?.(nextItems);
+    setLoading(true);
+    try {
+      const nextItems = await loadItems();
+      setItems(nextItems);
+      onItemsLoaded?.(nextItems);
+    } catch (exception) {
+      setError(exception.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -825,12 +900,15 @@ function TimelineTab({ title, emptyItem, loadItems, createItem, fields, renderIt
   async function handleSubmit(event) {
     event.preventDefault();
     setError('');
+    setSaving(true);
     try {
       await createItem(form);
-      setForm(emptyItem);
+      setForm(createEmptyItem());
       await load();
     } catch (exception) {
       setError(exception.message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -857,11 +935,12 @@ function TimelineTab({ title, emptyItem, loadItems, createItem, fields, renderIt
           />
         ))}
         {error && <div className="form-error">{error}</div>}
-        <button className="primary-button" type="submit">Guardar</button>
+        <button className="primary-button" type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</button>
       </form>
       <div className="timeline">
-        {items.length === 0 && <p className="empty-state">No hay registros cargados.</p>}
-        {items.map((item) => <article className="timeline-item" key={item.id}>{renderItem(item)}</article>)}
+        {loading && <p className="empty-state">Cargando registros…</p>}
+        {!loading && items.length === 0 && <p className="empty-state">No hay registros cargados.</p>}
+        {!loading && items.map((item) => <article className="timeline-item" key={item.id}>{renderItem(item)}</article>)}
       </div>
     </div>
   );
@@ -910,11 +989,11 @@ function DynamicField({ label, type, value, onChange }) {
   return <Field type={type} label={label} value={value} onChange={onChange} />;
 }
 
-function Field({ label, value, onChange, type = 'text', required = false }) {
+function Field({ label, value, onChange, type = 'text', required = false, ...inputProps }) {
   return (
     <label>
       {label}
-      <input type={type} value={value || ''} required={required} onChange={(event) => onChange(event.target.value)} />
+      <input {...inputProps} type={type} value={value || ''} required={required} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -976,4 +1055,7 @@ function toPacienteForm(paciente) {
   };
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+const rootElement = document.getElementById('root');
+const root = import.meta.hot?.data.root || createRoot(rootElement);
+if (import.meta.hot) import.meta.hot.data.root = root;
+root.render(<App />);
