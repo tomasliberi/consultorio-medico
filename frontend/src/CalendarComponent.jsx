@@ -148,9 +148,13 @@ export default function CalendarComponent({ api }) {
     if (selectedDateTime < new Date()) { setError('No se pueden agendar turnos en una fecha u hora anterior.'); return; }
     if (form.hora < '06:00' || form.hora > '21:00') { setError('El horario laboral es de 06:00 a 21:00.'); return; }
     if (!form.motivoConsulta.trim()) { setError('Escribí el motivo del turno antes de guardarlo.'); return; }
+    const monto = Number(form.montoSenia || 0);
+    if (!Number.isFinite(monto) || monto < 0 || monto > 9999999999.99) {
+      setError('Ingresá una seña válida de hasta $9.999.999.999,99.');
+      return;
+    }
     setSaving(true); setError('');
     try {
-      const monto = Number(form.montoSenia || 0);
       const payload = { ...form, pacienteId: Number(form.pacienteId), hora: `${form.hora}:00`, montoSenia: monto, seniaPagada: monto > 0 };
       if (editingEventId) await api.actualizarCita(editingEventId, payload);
       else await api.agendarCita(payload);
@@ -201,7 +205,7 @@ export default function CalendarComponent({ api }) {
         <label className="agenda-full">Tipo<select value={form.tipoCita} onChange={(e)=>setForm({...form,tipoCita:e.target.value})}><option value="CONSULTA">Consulta</option><option value="PROCEDIMIENTO">Procedimiento</option></select></label>
         <label className="agenda-full">Motivo<input required placeholder="Ej.: control, aplicación, evaluación" value={form.motivoConsulta} onChange={(e)=>setForm({...form,motivoConsulta:e.target.value})}/></label>
         <label className="agenda-full">Observaciones<textarea value={form.observaciones} onChange={(e)=>setForm({...form,observaciones:e.target.value})}/></label>
-        <label className="agenda-full deposit-amount">Seña pagada ($)<input type="number" min="0" step="0.01" placeholder="0,00" value={form.montoSenia} onChange={(e)=>setForm({...form,montoSenia:e.target.value,seniaPagada:Number(e.target.value)>0})}/><small>Dejá 0 o vacío si todavía no pagó. Podés modificarlo después.</small></label>
+        <label className="agenda-full deposit-amount">Seña pagada ($)<input type="number" min="0" max="9999999999.99" step="0.01" placeholder="0,00" value={form.montoSenia} onChange={(e)=>setForm({...form,montoSenia:e.target.value,seniaPagada:Number(e.target.value)>0})}/><small>Dejá 0 o vacío si todavía no pagó. Podés modificarlo después.</small></label>
         {error && <div className="form-error agenda-full turno-submit-error">{error}</div>}
         <div className="agenda-actions agenda-full"><button type="button" className="secondary-button" onClick={()=>setShowForm(false)}>Cancelar</button><button type="submit" className="primary-button" disabled={saving}>{saving?'Guardando…':editingEventId?'Guardar cambios':'Guardar turno'}</button></div>
       </form>

@@ -9,4 +9,7 @@ dist/
 backend/target/
 
 .env
+.env.production
+secrets/
+backups/
 .tools/

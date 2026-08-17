@@ -1,0 +1,6 @@
+target
+*.log
+*.err
+README.md
+run.ps1
+test.ps1

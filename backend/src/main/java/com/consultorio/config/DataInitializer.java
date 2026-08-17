@@ -14,21 +14,27 @@ public class DataInitializer implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
     private final String initialUsername;
     private final String initialPassword;
+    private final boolean production;
 
     public DataInitializer(
             UsuarioRepository usuarioRepository,
             PasswordEncoder passwordEncoder,
             @Value("${app.initial-user.username}") String initialUsername,
-            @Value("${app.initial-user.password}") String initialPassword
+            @Value("${app.initial-user.password}") String initialPassword,
+            @Value("${app.production:false}") boolean production
     ) {
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
         this.initialUsername = initialUsername;
         this.initialPassword = initialPassword;
+        this.production = production;
     }
 
     @Override
     public void run(String... args) {
+        if (production && (initialPassword.length() < 12 || "admin123".equals(initialPassword))) {
+            throw new IllegalStateException("INITIAL_USER_PASSWORD debe tener al menos 12 caracteres en producción.");
+        }
         if (usuarioRepository.findByUsername(initialUsername).isPresent()) {
             return;
         }

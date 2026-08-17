@@ -1,0 +1,101 @@
+name: consulflor
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: consultorio
+      POSTGRES_USER: consultorio_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      TZ: UTC
+    secrets:
+      - db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U consultorio_user -d consultorio"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - private
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      APP_PRODUCTION: "true"
+      DB_URL: jdbc:postgresql://db:5432/consultorio?options=-c%20TimeZone=UTC
+      DB_USERNAME: consultorio_user
+      INITIAL_USER_USERNAME: ${INITIAL_USER_USERNAME:-admin}
+      CORS_ALLOWED_ORIGINS: https://${DOMAIN:?Defina DOMAIN en .env.production}
+    secrets:
+      - db_password
+      - initial_user_password
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        export DB_PASSWORD="$$(cat /run/secrets/db_password)"
+        export INITIAL_USER_PASSWORD="$$(cat /run/secrets/initial_user_password)"
+        exec java -XX:MaxRAMPercentage=75.0 -jar /app/app.jar
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+    networks:
+      - private
+      - edge
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    networks:
+      - edge
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Defina DOMAIN en .env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - edge
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  initial_user_password:
+    file: ./secrets/initial_user_password.txt
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  edge:
+  private:
+    internal: true

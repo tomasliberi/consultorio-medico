@@ -18,7 +18,7 @@ import {
 import './styles.css';
 import CalendarComponent from './CalendarComponent.jsx';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 function localDateValue(date = new Date()) {
   const year = date.getFullYear();
@@ -65,20 +65,11 @@ const createEmptyProcedimiento = () => ({
 });
 
 function App() {
-  const [auth, setAuth] = useState(() => {
-    const stored = sessionStorage.getItem('consultorio_auth') || localStorage.getItem('consultorio_auth');
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored);
-    } catch {
-      sessionStorage.removeItem('consultorio_auth');
-      localStorage.removeItem('consultorio_auth');
-      return null;
-    }
-  });
+  const [auth, setAuth] = useState(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [view, setView] = useState('inicio');
   const [selectedPacienteId, setSelectedPacienteId] = useState(null);
-  const api = useMemo(() => createApiClient(auth), [auth]);
+  const api = useMemo(() => createApiClient(), []);
   const currentUser = {
     name: 'Dra. Florencia Liberi',
     role: 'Administradora',
@@ -97,19 +88,19 @@ function App() {
   }, []);
 
   function handleLogin(nextAuth) {
-    localStorage.removeItem('consultorio_auth');
-    sessionStorage.setItem('consultorio_auth', JSON.stringify(nextAuth));
     setAuth(nextAuth);
     setView('inicio');
   }
 
-  function handleLogout() {
-    sessionStorage.removeItem('consultorio_auth');
-    localStorage.removeItem('consultorio_auth');
+  async function handleLogout() {
+    try { await api.logout(); } catch { /* Clear UI even if logout fails. */ }
     setAuth(null);
     setSelectedPacienteId(null);
   }
 
+  useEffect(() => { api.me().then(setAuth).catch(() => setAuth(null)).finally(() => setCheckingAuth(false)); }, [api]);
+
+  if (checkingAuth) return <main className="login-page">Cargando…</main>;
   if (!auth) {
     return <LoginPage onLogin={handleLogin} />;
   }
@@ -151,17 +142,21 @@ function App() {
   );
 }
 
-function createApiClient(auth) {
-  const encodedCredentials = auth
-    ? btoa(String.fromCharCode(...new TextEncoder().encode(`${auth.username}:${auth.password}`)))
-    : null;
-  const headers = encodedCredentials ? { Authorization: `Basic ${encodedCredentials}` } : {};
+function createApiClient() {
+  let csrfToken;
+  async function csrf() {
+    if (!csrfToken) csrfToken = (await (await fetch(`${API_URL}/auth/csrf`, { credentials: 'include' })).json()).token;
+    return csrfToken;
+  }
 
   async function request(path, options = {}) {
+    const method = options.method || 'GET';
+    const token = ['GET', 'HEAD', 'OPTIONS'].includes(method) ? null : await csrf();
     const response = await fetch(`${API_URL}${path}`, {
       ...options,
+      credentials: 'include',
       headers: {
-        ...headers,
+        ...(token ? { 'X-XSRF-TOKEN': token } : {}),
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
         ...options.headers,
       },
@@ -177,7 +172,7 @@ function createApiClient(auth) {
       }
       const requestError = new Error(message);
       requestError.status = response.status;
-      if (response.status === 401 && auth) {
+      if (response.status === 401) {
         window.dispatchEvent(new Event('consultorio:unauthorized'));
       }
       throw requestError;
@@ -190,7 +185,10 @@ function createApiClient(auth) {
   }
 
   return {
-    login: () => request('/auth/login', { method: 'POST' }),
+    login: (username, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+    me: () => request('/auth/me'),
+    logout: () => request('/auth/logout', { method: 'POST' }),
+    changePassword: (data) => request('/auth/change-password', { method: 'POST', body: JSON.stringify(data) }),
     listPacientes: (buscar) => request(`/pacientes${buscar ? `?buscar=${encodeURIComponent(buscar)}` : ''}`),
     getPaciente: (id) => request(`/pacientes/${id}`),
     createPaciente: (data) => request('/pacientes', { method: 'POST', body: JSON.stringify(data) }),
@@ -223,10 +221,8 @@ function LoginPage({ onLogin }) {
     event.preventDefault();
     setError('');
     setLoading(true);
-    const nextAuth = { username, password };
     try {
-      await createApiClient(nextAuth).login();
-      onLogin(nextAuth);
+      onLogin(await createApiClient().login(username, password));
     } catch (exception) {
       setError(exception.message);
     } finally {
