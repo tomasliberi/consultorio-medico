@@ -818,7 +818,17 @@ tr:last-child td {
   grid-template-columns: minmax(280px, 380px) 1fr;
   gap: 18px;
 }
-
+.header-photo {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 50%;
+  border: 2px solid #c9a99b;
+  flex-shrink: 0;
+}
 .checkbox-field {
   display: flex;
   align-items: center;
@@ -910,4 +920,14 @@ tr:last-child td {
   .split-panel {
     grid-template-columns: 1fr;
   }
+.footer-link {
+  color: #8c5a3c;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.footer-link:hover {
+  color: #6f432b;
+  text-decoration: underline;
+}
 }

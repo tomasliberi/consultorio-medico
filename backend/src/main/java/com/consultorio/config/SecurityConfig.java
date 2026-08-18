@@ -1,5 +1,5 @@
 package com.consultorio.config;
-
+import jakarta.servlet.http.HttpServletResponse;
 import com.consultorio.security.CustomUserDetailsService;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
@@ -33,7 +33,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .httpBasic(Customizer.withDefaults());
+                .httpBasic(httpBasic -> httpBasic
+    .authenticationEntryPoint((request, response, authException) ->
+        response.sendError(HttpServletResponse.SC_UNAUTHORIZED)
+    )
+);
 
         return http.build();
     }
@@ -62,7 +66,12 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:5173", "http://localhost:3000"));
+        configuration.setAllowedOrigins(List.of(
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://draflorencialiberi.com",
+    "https://www.draflorencialiberi.com"
+));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
 

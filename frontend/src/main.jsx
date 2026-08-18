@@ -125,7 +125,14 @@ function App() {
 }
 
 function createApiClient(auth) {
-  const headers = auth ? { Authorization: `Basic ${btoa(`${auth.username}:${auth.password}`)}` } : {};
+  const headers = auth
+  ? {
+      Authorization: `Basic ${btoa(`${auth.username}:${auth.password}`)}`,
+      'X-Requested-With': 'XMLHttpRequest',
+    }
+  : {
+      'X-Requested-With': 'XMLHttpRequest',
+    };
 
   async function request(path, options = {}) {
     const response = await fetch(`${API_URL}${path}`, {
@@ -223,7 +230,11 @@ function Shell({ children, view, onNavigate, onLogout, user }) {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <LogoMark small />
+          <img
+    src="/flor.jfif"
+    alt="Dra. Florencia Liberi"
+    className="header-photo"
+  />
           <div>
             <strong>Dra. Florencia Liberi</strong>
             <span>Medicina Estética</span>
@@ -262,7 +273,17 @@ function Shell({ children, view, onNavigate, onLogout, user }) {
 }
 
 function AppFooter() {
-  return <footer className="app-footer">Diseñada por Tomas Liberi y Sol Liberi</footer>;
+  return( <footer className="app-footer">
+    Diseñado por{' '}
+    <a
+      href="https://neodevs-digital.tomasliberi.chatgpt.site/"
+      target="_blank"
+      rel="noopener noreferrer"
+      className = "footer-link"
+    >
+      NeoDevs
+    </a>
+  </footer>);
 }
 
 function SidebarUserProfile({ user }) {
