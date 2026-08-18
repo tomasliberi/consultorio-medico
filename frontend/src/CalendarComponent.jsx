@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { addMinutes, endOfMonth, format, getDay, parse, startOfMonth, startOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -36,6 +36,7 @@ export default function CalendarComponent({ api }) {
   const [patientSearch, setPatientSearch] = useState('');
   const [showPatientSuggestions, setShowPatientSuggestions] = useState(false);
   const [error, setError] = useState('');
+  const patientAutocompleteRef = useRef(null);
 
   const loadEvents = useCallback(async () => {
     setLoading(true); setError('');
@@ -46,6 +47,28 @@ export default function CalendarComponent({ api }) {
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
   useEffect(() => { api.listPacientes('').then(setPacientes).catch((e) => setError(e.message)); }, [api]);
+
+  useEffect(() => {
+    if (!showPatientSuggestions) return undefined;
+
+    const closeOnOutsidePointer = (event) => {
+      if (!patientAutocompleteRef.current?.contains(event.target)) {
+        setShowPatientSuggestions(false);
+      }
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') {
+        setShowPatientSuggestions(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [showPatientSuggestions]);
 
   const calendarEvents = useMemo(() => events.map((event) => {
     const start = toLocalDate(event.fecha, event.hora);
@@ -146,9 +169,10 @@ export default function CalendarComponent({ api }) {
         {patientNotice && <div className="success-message agenda-full">{patientNotice}</div>}
         <div className="agenda-full patient-picker">
           <label>Paciente
-            <div className="patient-autocomplete">
+            <div className="patient-autocomplete" ref={patientAutocompleteRef}>
               <input type="search" required placeholder="Buscar por nombre, apellido o DNI" value={patientSearch} autoComplete="off"
                 onFocus={() => setShowPatientSuggestions(true)}
+                onClick={() => setShowPatientSuggestions(true)}
                 onChange={(e) => { setPatientSearch(e.target.value); setForm({...form,pacienteId:''}); setShowPatientSuggestions(true); }}
               />
               {showPatientSuggestions && <div className="patient-suggestions">
