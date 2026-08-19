@@ -25,7 +25,7 @@ public class ConsultaService {
     @Transactional(readOnly = true)
     public List<ConsultaResponse> listarPorPaciente(Long pacienteId) {
         pacienteService.buscarEntidad(pacienteId);
-        return consultaRepository.findByPacienteIdOrderByFechaDescIdDesc(pacienteId).stream()
+        return consultaRepository.findByPacienteIdAndHoraIsNullOrderByFechaDescIdDesc(pacienteId).stream()
                 .map(this::toResponse)
                 .toList();
     }

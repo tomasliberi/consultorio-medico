@@ -12,7 +12,7 @@ const localizer = dateFnsLocalizer({
 });
 const emptyForm = { pacienteId: '', fecha: format(new Date(), 'yyyy-MM-dd'), hora: '09:00', tipoCita: 'CONSULTA', motivoConsulta: '', observaciones: '', seniaPagada: false, montoSenia: '' };
 const emptyPatient = { nombreCompleto: '', dni: '' };
-const toLocalDate = (fecha, hora = '00:00') => parse(`${fecha} ${hora.slice(0, 5)}`, 'yyyy-MM-dd HH:mm', new Date());
+const toLocalDate = (fecha, hora = '00:00') => parse(`${fecha} ${(hora || '00:00').slice(0, 5)}`, 'yyyy-MM-dd HH:mm', new Date());
 const workTimes = Array.from({ length: 31 }, (_, index) => {
   const minutes = 6 * 60 + index * 30;
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
@@ -105,7 +105,7 @@ export default function CalendarComponent({ api }) {
   }
 
   function editEvent(event) {
-    setForm({ pacienteId: String(event.pacienteId), fecha: event.fecha, hora: event.hora.slice(0, 5), tipoCita: event.tipoCita, motivoConsulta: event.motivoConsulta || '', observaciones: event.observaciones || '', seniaPagada: Boolean(event.seniaPagada), montoSenia: event.montoSenia || '' });
+    setForm({ pacienteId: String(event.pacienteId), fecha: event.fecha, hora: event.hora?.slice(0, 5) || '', tipoCita: event.tipoCita, motivoConsulta: event.motivoConsulta || '', observaciones: event.observaciones || '', seniaPagada: Boolean(event.seniaPagada), montoSenia: event.montoSenia || '' });
     const patient = pacientes.find((item) => item.id === event.pacienteId);
     setEditingEventId(event.id); setSelectedEvent(null); setShowNewPatient(false); setError(''); setPatientNotice('');
     setPatientSearch(patient ? `${patient.apellido}, ${patient.nombre} · DNI ${patient.dni}` : `${event.pacienteApellido}, ${event.pacienteNombre}`);

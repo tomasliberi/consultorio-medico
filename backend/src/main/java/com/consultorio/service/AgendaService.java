@@ -39,7 +39,13 @@ public class AgendaService {
 
     @Transactional(readOnly = true)
     public List<AgendaEventoResponse> obtenerEventosCalendario(LocalDate fechaInicio, LocalDate fechaFin) {
-        return consultaRepository.findByFechaBetweenOrderByFechaDescHoraDesc(fechaInicio, fechaFin).stream()
+        if (fechaFin.isBefore(fechaInicio)) {
+            throw new IllegalArgumentException("La fecha final no puede ser anterior a la fecha inicial.");
+        }
+        if (fechaInicio.plusYears(1).isBefore(fechaFin)) {
+            throw new IllegalArgumentException("El rango máximo permitido es de un año.");
+        }
+        return consultaRepository.findByFechaBetweenAndHoraIsNotNullOrderByFechaDescHoraDesc(fechaInicio, fechaFin).stream()
                 .map(this::toAgendaEventoResponse)
                 .toList();
     }
@@ -65,7 +71,7 @@ public class AgendaService {
         int duracion = disponibilidad.getDuracionCitasMinutos();
 
         while (horaActual.plusMinutes(duracion).compareTo(horaFin) <= 0) {
-            if (!estaOcupado(horaActual, horaActual.plusMinutes(duracion), citasDelDia)) {
+            if (!estaOcupado(fecha, horaActual, horaActual.plusMinutes(duracion), citasDelDia)) {
                 horariosDisponibles.add(horaActual);
             }
             horaActual = horaActual.plusMinutes(duracion);
@@ -91,9 +97,7 @@ public class AgendaService {
         consulta.setMotivoConsulta(request.motivoConsulta() != null ? request.motivoConsulta() : "");
         consulta.setObservaciones(request.observaciones());
         
-        if (request.tipoCita() != null) {
-            consulta.setTipoCita(Consulta.TipoCita.valueOf(request.tipoCita()));
-        }
+        consulta.setTipoCita(request.tipoCita() == null ? Consulta.TipoCita.CONSULTA : request.tipoCita());
         
         if (request.seniaPagada() != null) {
             consulta.setSeniaPagada(request.seniaPagada());
@@ -117,9 +121,7 @@ public class AgendaService {
         consulta.setHora(request.hora());
         consulta.setMotivoConsulta(request.motivoConsulta() != null ? request.motivoConsulta() : "");
         consulta.setObservaciones(request.observaciones());
-        consulta.setTipoCita(request.tipoCita() == null
-                ? Consulta.TipoCita.CONSULTA
-                : Consulta.TipoCita.valueOf(request.tipoCita()));
+        consulta.setTipoCita(request.tipoCita() == null ? Consulta.TipoCita.CONSULTA : request.tipoCita());
         consulta.setSeniaPagada(Boolean.TRUE.equals(request.seniaPagada()));
         consulta.setMontoSenia(request.montoSenia());
 
@@ -129,7 +131,10 @@ public class AgendaService {
     @Transactional
     public DisponibilidadResponse crearDisponibilidad(DisponibilidadRequest request) {
         Disponibilidad disponibilidad = new Disponibilidad();
-        disponibilidad.setDiaSemana(Disponibilidad.DiaSemana.valueOf(request.diaSemana()));
+        if (!request.horaFin().isAfter(request.horaInicio())) {
+            throw new IllegalArgumentException("La hora final debe ser posterior a la hora inicial.");
+        }
+        disponibilidad.setDiaSemana(request.diaSemana());
         disponibilidad.setHoraInicio(request.horaInicio());
         disponibilidad.setHoraFin(request.horaFin());
         if (request.duracionCitasMinutos() != null) {
@@ -154,6 +159,9 @@ public class AgendaService {
     public void eliminarCita(Long citaId) {
         Consulta consulta = consultaRepository.findById(citaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cita no encontrada."));
+        if (consulta.getHora() == null) {
+            throw new IllegalArgumentException("El registro clínico no es un turno de Agenda.");
+        }
         consultaRepository.delete(consulta);
     }
 
@@ -232,16 +240,16 @@ public class AgendaService {
         Disponibilidad disponibilidad = disponibilidades.get(0);
         LocalTime horaFin = hora.plusMinutes(disponibilidad.getDuracionCitasMinutos());
 
-        if (estaOcupado(hora, horaFin, citasDelDia)) {
+        if (estaOcupado(fecha, hora, horaFin, citasDelDia)) {
             throw new IllegalArgumentException("El horario ya está ocupado.");
         }
     }
 
-    private boolean estaOcupado(LocalTime horaInicio, LocalTime horaFin, List<Consulta> citas) {
+    private boolean estaOcupado(LocalDate fecha, LocalTime horaInicio, LocalTime horaFin, List<Consulta> citas) {
         for (Consulta cita : citas) {
             if (cita.getHora() != null) {
                 LocalTime horaActual = cita.getHora();
-                DayOfWeek dayOfWeek = LocalDate.now().getDayOfWeek();
+                DayOfWeek dayOfWeek = fecha.getDayOfWeek();
                 Disponibilidad.DiaSemana diaSemana = convertDayOfWeek(dayOfWeek);
                 List<Disponibilidad> disponibilidades = disponibilidadRepository
                         .findByDiaSemanaAndActivoTrue(diaSemana);

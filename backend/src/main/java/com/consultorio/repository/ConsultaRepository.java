@@ -9,9 +9,15 @@ public interface ConsultaRepository extends JpaRepository<Consulta, Long> {
 
     List<Consulta> findByPacienteIdOrderByFechaDescIdDesc(Long pacienteId);
 
+    List<Consulta> findByPacienteIdAndHoraIsNullOrderByFechaDescIdDesc(Long pacienteId);
+
     List<Consulta> findByPacienteIdOrderByFechaAscHoraAsc(Long pacienteId);
 
+    List<Consulta> findByPacienteIdAndHoraIsNotNullOrderByFechaAscHoraAsc(Long pacienteId);
+
     List<Consulta> findByFechaBetweenOrderByFechaDescHoraDesc(LocalDate fechaInicio, LocalDate fechaFin);
+
+    List<Consulta> findByFechaBetweenAndHoraIsNotNullOrderByFechaDescHoraDesc(LocalDate fechaInicio, LocalDate fechaFin);
 
     List<Consulta> findByFechaOrderByHoraAsc(LocalDate fecha);
 }

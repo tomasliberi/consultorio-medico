@@ -3,9 +3,9 @@ services:
     image: postgres:16
     container_name: consultorio_postgres
     environment:
-      POSTGRES_DB: consultorio
-      POSTGRES_USER: consultorio_user
-      POSTGRES_PASSWORD: consultorio_password
+      POSTGRES_DB: ${DB_NAME:-consultorio}
+      POSTGRES_USER: ${DB_USERNAME:-consultorio_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD debe definirse fuera de Git}
     ports:
       - "5433:5432"
     volumes:

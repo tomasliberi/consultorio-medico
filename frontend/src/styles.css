@@ -594,6 +594,37 @@ tr:last-child td {
   gap: 8px;
 }
 
+.billing-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.billing-summary > div {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #eadbd2;
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: rgba(255, 250, 247, 0.92);
+  box-shadow: 0 12px 30px rgba(90, 66, 55, 0.06);
+}
+
+.billing-summary span,
+.calculated-field span {
+  color: #806f68;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.billing-summary strong { color: #8f5f53; font-family: Georgia, "Times New Roman", serif; font-size: 25px; }
+.billing-table table { min-width: 1080px; }
+.billing-table td:nth-child(3), .billing-table td:nth-child(4), .billing-table td:nth-child(5) { white-space: nowrap; }
+.calculated-field { display: grid; align-content: center; gap: 7px; border: 1px solid #eadbd2; border-radius: 10px; padding: 10px 12px; background: #fff7f2; }
+.calculated-field strong { color: #8f5f53; font-size: 18px; }
+
 .today-summary { display: inline-flex; align-items: baseline; gap: 9px; margin-bottom: 18px; border-radius: 12px; padding: 12px 16px; color: #7b5a50; background: #f8ebe4; }
 .today-summary strong { font-size: 25px; }
 .today-appointments { display: grid; gap: 12px; }
@@ -920,6 +951,8 @@ tr:last-child td {
   .split-panel {
     grid-template-columns: 1fr;
   }
+
+  .billing-summary { grid-template-columns: 1fr; }
 .footer-link {
   color: #8c5a3c;
   text-decoration: none;

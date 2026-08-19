@@ -11,7 +11,7 @@ Aplicación web para la gestión privada de un consultorio de medicina estética
 
 ## Funcionalidades
 
-- Inicio de sesión y acceso protegido mediante HTTP Basic.
+- Inicio de sesión mediante sesión segura, cookie `HttpOnly` y protección CSRF.
 - Alta, edición, búsqueda y consulta de pacientes.
 - Historia clínica individual con antecedentes, alergias y medicación habitual.
 - Registro cronológico de consultas, evaluaciones y diagnósticos.
@@ -80,19 +80,7 @@ Abrir `http://localhost:5173` en el navegador.
 
 ## Acceso inicial
 
-Para desarrollo local se crea automáticamente este usuario si todavía no existe:
-
-```text
-Usuario: admin
-Contraseña: admin123
-```
-
-Las credenciales se pueden reemplazar con variables de entorno:
-
-```text
-INITIAL_USER_USERNAME
-INITIAL_USER_PASSWORD
-```
+No existen usuarios ni contraseñas predeterminados. Para crear el primer usuario, habilitá el inicializador únicamente durante el primer arranque con `INITIAL_USER_ENABLED=true`, `INITIAL_USER_USERNAME` e `INITIAL_USER_PASSWORD`. Después del alta, eliminá esas variables y reiniciá el backend.
 
 ## Configuración
 
@@ -102,15 +90,27 @@ El backend admite las siguientes variables de entorno:
 | --- | --- |
 | `DB_URL` | `jdbc:postgresql://localhost:5433/consultorio` |
 | `DB_USERNAME` | `consultorio_user` |
-| `DB_PASSWORD` | `consultorio_password` |
-| `INITIAL_USER_USERNAME` | `admin` |
-| `INITIAL_USER_PASSWORD` | `admin123` |
+| `DB_PASSWORD` | Obligatoria, sin valor predeterminado |
+| `INITIAL_USER_ENABLED` | `false` |
+| `INITIAL_USER_USERNAME` | Sin valor predeterminado |
+| `INITIAL_USER_PASSWORD` | Sin valor predeterminado |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` |
 
-Los valores incluidos son únicamente para desarrollo local. No deben reutilizarse en producción.
+Los valores de ejemplo no son secretos reales y deben reemplazarse antes de iniciar el sistema.
+
+## Despliegue en producción
+
+1. Creá fuera del repositorio un archivo de variables protegido y definí secretos aleatorios para la base y el usuario inicial.
+2. Configurá `PUBLIC_ORIGIN` con el dominio HTTPS definitivo.
+3. Si se utiliza Docker, ejecutá `docker compose --env-file /ruta/segura/produccion.env -f docker-compose.prod.yml up -d --build`.
+4. Poné un proxy TLS delante de `127.0.0.1:8081`.
+5. Tras el primer ingreso, eliminá las variables `INITIAL_USER_*` y recreá el backend.
+
+PostgreSQL no publica puertos en producción. La sesión usa cookies `HttpOnly`, `Secure` y `SameSite=Strict`; las operaciones de escritura requieren CSRF.
 
 ## API
 
-Todos los endpoints requieren autenticación HTTP Basic.
+Todos los endpoints de negocio requieren una sesión autenticada.
 
 ```text
 POST /api/auth/login

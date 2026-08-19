@@ -9,4 +9,7 @@ dist/
 backend/target/
 
 .env
+.env.*
+.env.local
+*.env.local
 .tools/

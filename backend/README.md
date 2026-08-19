@@ -35,17 +35,12 @@ Esto levanta PostgreSQL en:
 localhost:5433
 database: consultorio
 user: consultorio_user
-password: consultorio_password
+password: definida mediante `DB_PASSWORD`
 ```
 
 ## Usuario inicial
 
-Al iniciar la aplicacion, si no existe, se crea:
-
-```text
-usuario: admin
-password: admin123
-```
+No se crea ningún usuario predeterminado. El alta inicial requiere definir explícitamente `INITIAL_USER_ENABLED=true`, `INITIAL_USER_USERNAME` e `INITIAL_USER_PASSWORD`. Eliminá esas variables después del primer arranque.
 
 ## Comandos con Maven local
 
@@ -65,16 +60,17 @@ O manualmente:
 ..\.tools\apache-maven-3.9.9\bin\mvn.cmd spring-boot:run
 ```
 
-Para cambiarlo sin tocar codigo:
+Para habilitar el alta inicial una sola vez:
 
 ```bash
-INITIAL_USER_USERNAME=otrausuaria
-INITIAL_USER_PASSWORD=otra-password
+INITIAL_USER_ENABLED=true
+INITIAL_USER_USERNAME=usuario-inicial
+INITIAL_USER_PASSWORD=usar-un-secreto-largo
 ```
 
 ## Endpoints
 
-Todos los endpoints requieren autenticacion HTTP Basic.
+Todos los endpoints de negocio requieren una sesión autenticada.
 
 ```text
 POST /api/auth/login

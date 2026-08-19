@@ -9,6 +9,7 @@ import {
   Home,
   LogOut,
   Plus,
+  Receipt,
   Search,
   Stethoscope,
   Trash2,
@@ -57,34 +58,46 @@ const emptyProcedimiento = {
   estadoControl: 'NO_REQUIERE',
 };
 
+const emptyFacturacion = {
+  procedimiento: '',
+  pacienteId: '',
+  facturacionBruta: '',
+  facturacionNeta: '',
+  fecha: new Date().toLocaleDateString('en-CA'),
+};
+
 function App() {
-  const [auth, setAuth] = useState(() => {
-    const stored = localStorage.getItem('consultorio_auth');
-    return stored ? JSON.parse(stored) : null;
-  });
+  const [auth, setAuth] = useState(undefined);
   const [view, setView] = useState('inicio');
   const [selectedPacienteId, setSelectedPacienteId] = useState(null);
-  const api = useMemo(() => createApiClient(auth), [auth]);
+  const api = useMemo(() => createApiClient(), []);
   const currentUser = {
     name: 'Dra. Florencia Liberi',
     role: 'Administradora',
     photoUrl: '/profile-florencia.jfif',
   };
 
+  useEffect(() => {
+    api.getCurrentUser().then(setAuth).catch(() => setAuth(null));
+  }, [api]);
+
   function handleLogin(nextAuth) {
-    localStorage.setItem('consultorio_auth', JSON.stringify(nextAuth));
     setAuth(nextAuth);
     setView('inicio');
   }
 
-  function handleLogout() {
-    localStorage.removeItem('consultorio_auth');
+  async function handleLogout() {
+    try { await api.logout(); } catch { /* La sesión local se limpia igualmente. */ }
     setAuth(null);
     setSelectedPacienteId(null);
   }
 
-  if (!auth) {
-    return <LoginPage onLogin={handleLogin} />;
+  if (auth === undefined) {
+    return <main className="login-page"><section className="login-panel">Verificando sesión…</section></main>;
+  }
+
+  if (auth === null) {
+    return <LoginPage api={api} onLogin={handleLogin} />;
   }
 
   return (
@@ -103,6 +116,7 @@ function App() {
       {view === 'hoy' && <TurnosHoyPage api={api} onOpenAgenda={() => setView('agenda')} />}
       {view === 'controles' && <ControlesPendientesPage api={api} onOpenPaciente={(id) => { setSelectedPacienteId(id); setView('perfil'); }} />}
       {view === 'agenda' && <CalendarComponent api={api} />}
+      {view === 'facturacion' && <FacturacionPage api={api} />}
       {view === 'pacientes' && (
         <PacientesPage
           api={api}
@@ -124,21 +138,27 @@ function App() {
   );
 }
 
-function createApiClient(auth) {
-  const headers = auth
-  ? {
-      Authorization: `Basic ${btoa(`${auth.username}:${auth.password}`)}`,
-      'X-Requested-With': 'XMLHttpRequest',
-    }
-  : {
-      'X-Requested-With': 'XMLHttpRequest',
-    };
+function createApiClient() {
+  let csrfToken = null;
+
+  async function getCsrfToken() {
+    if (csrfToken) return csrfToken;
+    const response = await fetch(`${API_URL}/auth/csrf`, { credentials: 'same-origin' });
+    if (!response.ok) throw new Error('No se pudo iniciar una sesión segura.');
+    csrfToken = (await response.json()).token;
+    return csrfToken;
+  }
 
   async function request(path, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
+    const requiresCsrf = !['GET', 'HEAD', 'OPTIONS'].includes(method) && path !== '/auth/login';
+    const securityHeaders = requiresCsrf ? { 'X-XSRF-TOKEN': await getCsrfToken() } : {};
     const response = await fetch(`${API_URL}${path}`, {
       ...options,
+      credentials: 'same-origin',
       headers: {
-        ...headers,
+        'X-Requested-With': 'XMLHttpRequest',
+        ...securityHeaders,
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
         ...options.headers,
       },
@@ -162,7 +182,9 @@ function createApiClient(auth) {
   }
 
   return {
-    login: () => request('/auth/login', { method: 'POST' }),
+    login: (username, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+    getCurrentUser: () => request('/auth/me'),
+    logout: () => request('/auth/logout', { method: 'POST' }),
     listPacientes: (buscar) => request(`/pacientes${buscar ? `?buscar=${encodeURIComponent(buscar)}` : ''}`),
     getPaciente: (id) => request(`/pacientes/${id}`),
     createPaciente: (data) => request('/pacientes', { method: 'POST', body: JSON.stringify(data) }),
@@ -180,10 +202,14 @@ function createApiClient(auth) {
     agendarCita: (data) => request('/agenda/agendar', { method: 'POST', body: JSON.stringify(data) }),
     actualizarCita: (id, data) => request(`/agenda/citas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     cancelarCita: (id) => request(`/agenda/citas/${id}`, { method: 'DELETE' }),
+    listFacturaciones: () => request('/facturaciones'),
+    createFacturacion: (data) => request('/facturaciones', { method: 'POST', body: JSON.stringify(data) }),
+    updateFacturacion: (id, data) => request(`/facturaciones/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteFacturacion: (id) => request(`/facturaciones/${id}`, { method: 'DELETE' }),
   };
 }
 
-function LoginPage({ onLogin }) {
+function LoginPage({ api, onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] =useState('');
@@ -193,10 +219,9 @@ function LoginPage({ onLogin }) {
     event.preventDefault();
     setError('');
     setLoading(true);
-    const nextAuth = { username, password };
     try {
-      await createApiClient(nextAuth).login();
-      onLogin(nextAuth);
+      const authenticatedUser = await api.login(username, password);
+      onLogin(authenticatedUser);
     } catch (exception) {
       setError(exception.message);
     } finally {
@@ -256,6 +281,10 @@ function Shell({ children, view, onNavigate, onLogout, user }) {
           <button className={view === 'hoy' ? 'active' : ''} onClick={() => onNavigate('hoy')}>
             <Clock3 size={19} />
             Turnos de hoy
+          </button>
+          <button className={view === 'facturacion' ? 'active' : ''} onClick={() => onNavigate('facturacion')}>
+            <Receipt size={19} />
+            Facturación
           </button>
         </nav>
         <SidebarUserProfile user={user} />
@@ -459,6 +488,67 @@ function TurnosHoyPage({ api, onOpenAgenda }) {
       </div>}
     </section>
   );
+}
+
+function FacturacionPage({ api }) {
+  const [items, setItems] = useState([]);
+  const [pacientes, setPacientes] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
+  const loadData = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const [facturaciones, pacientesRegistrados] = await Promise.all([api.listFacturaciones(), api.listPacientes('')]);
+      setItems(facturaciones); setPacientes(pacientesRegistrados);
+    } catch (exception) { setError(exception.message); } finally { setLoading(false); }
+  }, [api]);
+  useEffect(() => { loadData(); }, [loadData]);
+  const totals = useMemo(() => items.reduce((result, item) => ({ bruta: result.bruta + Number(item.facturacionBruta), neta: result.neta + Number(item.facturacionNeta) }), { bruta: 0, neta: 0 }), [items]);
+  async function handleDelete(item) {
+    if (!window.confirm(`¿Eliminar la facturación de ${item.procedimiento}?`)) return;
+    setDeletingId(item.id); setError('');
+    try { await api.deleteFacturacion(item.id); await loadData(); }
+    catch (exception) { setError(exception.message); }
+    finally { setDeletingId(null); }
+  }
+  return <section className="page billing-page">
+    <div className="page-header"><div><span className="eyebrow">Administración</span><h2>Facturación</h2><p className="header-subtitle">Registro de ingresos por procedimientos.</p></div><button className="primary-button patient-action-button" onClick={() => setEditing(emptyFacturacion)}><Plus size={18} />Nueva facturación</button></div>
+    <div className="billing-summary"><div><span>Facturación bruta total</span><strong>{formatCurrency(totals.bruta)}</strong></div><div><span>Facturación neta total</span><strong>{formatCurrency(totals.neta)}</strong></div><div><span>Diferencia total</span><strong>{formatCurrency(totals.bruta - totals.neta)}</strong></div></div>
+    {error && <div className="form-error wide">{error}</div>}
+    <div className="table-wrap billing-table"><table><thead><tr><th>Procedimiento</th><th>Cliente</th><th>Facturación bruta</th><th>Facturación neta</th><th>Diferencia</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>
+      {loading && <tr><td colSpan="7">Cargando facturaciones...</td></tr>}
+      {!loading && items.length === 0 && <tr><td colSpan="7">No hay facturaciones cargadas.</td></tr>}
+      {!loading && items.map((item) => <tr key={item.id}><td><strong>{item.procedimiento}</strong></td><td>{item.pacienteApellido}, {item.pacienteNombre}</td><td>{formatCurrency(item.facturacionBruta)}</td><td>{formatCurrency(item.facturacionNeta)}</td><td>{formatCurrency(item.diferencia)}</td><td>{formatDate(item.fecha)}</td><td className="row-actions"><button onClick={() => setEditing(item)}>Editar</button><button className="delete-patient-button" disabled={deletingId === item.id} onClick={() => handleDelete(item)}><Trash2 size={16} />{deletingId === item.id ? 'Eliminando…' : 'Eliminar'}</button></td></tr>)}
+    </tbody></table></div>
+    {editing && <FacturacionModal api={api} item={editing} pacientes={pacientes} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await loadData(); }} />}
+  </section>;
+}
+
+function FacturacionModal({ api, item, pacientes, onClose, onSaved }) {
+  const [form, setForm] = useState({ procedimiento: item.procedimiento || '', pacienteId: item.pacienteId || '', facturacionBruta: item.facturacionBruta ?? '', facturacionNeta: item.facturacionNeta ?? '', fecha: item.fecha || new Date().toLocaleDateString('en-CA') });
+  const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
+  const isEdit = Boolean(item.id); const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const difference = Number(form.facturacionBruta || 0) - Number(form.facturacionNeta || 0);
+  async function handleSubmit(event) {
+    event.preventDefault(); setError('');
+    const bruta = Number(form.facturacionBruta); const neta = Number(form.facturacionNeta);
+    if (!Number.isFinite(bruta) || !Number.isFinite(neta) || bruta < 0 || neta < 0) { setError('Los importes deben ser números válidos y no negativos.'); return; }
+    setSaving(true);
+    try { const payload = { ...form, pacienteId: Number(form.pacienteId), facturacionBruta: bruta, facturacionNeta: neta }; if (isEdit) await api.updateFacturacion(item.id, payload); else await api.createFacturacion(payload); onSaved(); }
+    catch (exception) { setError(exception.message); } finally { setSaving(false); }
+  }
+  return <div className="modal-backdrop"><section className="modal billing-modal"><div className="modal-header"><h3>{isEdit ? 'Editar facturación' : 'Nueva facturación'}</h3><button onClick={onClose}>Cerrar</button></div><form className="form-grid" onSubmit={handleSubmit}>
+    <Field label="Procedimiento" value={form.procedimiento} onChange={(value) => update('procedimiento', value)} required />
+    <label>Cliente<select value={form.pacienteId} required onChange={(event) => update('pacienteId', event.target.value)}><option value="">Seleccionar cliente</option>{pacientes.map((paciente) => <option key={paciente.id} value={paciente.id}>{paciente.apellido}, {paciente.nombre} · DNI {paciente.dni}</option>)}</select></label>
+    <Field label="Facturación bruta" type="number" value={form.facturacionBruta} onChange={(value) => update('facturacionBruta', value)} required min="0" step="0.01" />
+    <Field label="Facturación neta" type="number" value={form.facturacionNeta} onChange={(value) => update('facturacionNeta', value)} required min="0" step="0.01" />
+    <Field label="Fecha" type="date" value={form.fecha} onChange={(value) => update('fecha', value)} required />
+    <div className="calculated-field"><span>Diferencia</span><strong>{formatCurrency(difference)}</strong></div>
+    {pacientes.length === 0 && <div className="form-error wide">Primero debe registrar un paciente para asociarlo a la facturación.</div>}{error && <div className="form-error wide">{error}</div>}
+    <div className="form-actions"><button type="button" onClick={onClose}>Cancelar</button><button type="submit" className="primary-button patient-action-button" disabled={saving || pacientes.length === 0}>{saving ? 'Guardando…' : 'Guardar'}</button></div>
+  </form></section></div>;
 }
 
 function PacientesPage({ api, onOpenPaciente }) {
@@ -931,11 +1021,11 @@ function DynamicField({ label, type, value, onChange }) {
   return <Field type={type} label={label} value={value} onChange={onChange} />;
 }
 
-function Field({ label, value, onChange, type = 'text', required = false }) {
+function Field({ label, value, onChange, type = 'text', required = false, min, step }) {
   return (
     <label>
       {label}
-      <input type={type} value={value || ''} required={required} onChange={(event) => onChange(event.target.value)} />
+      <input type={type} value={value ?? ''} required={required} min={min} step={step} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -962,6 +1052,11 @@ function formatDate(value) {
   if (!value) return '';
   const [year, month, day] = value.split('-');
   return `${day}/${month}/${year}`;
+}
+
+const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+function formatCurrency(value) {
+  return currencyFormatter.format(Number(value) || 0);
 }
 
 function formatTime(value) {

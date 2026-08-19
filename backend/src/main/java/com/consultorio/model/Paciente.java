@@ -72,6 +72,9 @@ public class Paciente {
     @OrderBy("fecha DESC, id DESC")
     private List<Procedimiento> procedimientos = new ArrayList<>();
 
+    @OneToMany(mappedBy = "paciente", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Facturacion> facturaciones = new ArrayList<>();
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

@@ -134,7 +134,7 @@ public class PacienteService {
         LocalDate hoy = LocalDate.now();
         LocalTime ahora = LocalTime.now().withSecond(0).withNano(0);
 
-        return consultaRepository.findByPacienteIdOrderByFechaAscHoraAsc(pacienteId).stream()
+        return consultaRepository.findByPacienteIdAndHoraIsNotNullOrderByFechaAscHoraAsc(pacienteId).stream()
                 .filter(consulta -> consulta.getFecha() != null)
                 .filter(consulta -> consulta.getHora() != null)
                 .filter(consulta -> consulta.getFecha().isAfter(hoy)
