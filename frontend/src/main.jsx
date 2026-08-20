@@ -196,16 +196,20 @@ function createApiClient() {
     listProcedimientos: (pacienteId) => request(`/pacientes/${pacienteId}/procedimientos`),
     createProcedimiento: (pacienteId, data) =>
       request(`/pacientes/${pacienteId}/procedimientos`, { method: 'POST', body: JSON.stringify(data) }),
+    deleteProcedimiento: (id) => request(`/procedimientos/${id}`, { method: 'DELETE' }),
     listControlesPendientes: () => request('/procedimientos/controles-pendientes'),
     listAgendaEventos: (fechaInicio, fechaFin) =>
       request(`/agenda/eventos?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`),
     agendarCita: (data) => request('/agenda/agendar', { method: 'POST', body: JSON.stringify(data) }),
     actualizarCita: (id, data) => request(`/agenda/citas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     cancelarCita: (id) => request(`/agenda/citas/${id}`, { method: 'DELETE' }),
+    actualizarEstadoCita: (id, estado) => request(`/agenda/citas/${id}/estado`, { method: 'PUT', body: JSON.stringify({ estado }) }),
     listFacturaciones: () => request('/facturaciones'),
     createFacturacion: (data) => request('/facturaciones', { method: 'POST', body: JSON.stringify(data) }),
     updateFacturacion: (id, data) => request(`/facturaciones/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteFacturacion: (id) => request(`/facturaciones/${id}`, { method: 'DELETE' }),
+    listOtrosGastos: () => request('/otros-gastos'),
+    createOtroGasto: (data) => request('/otros-gastos', { method: 'POST', body: JSON.stringify(data) }),
   };
 }
 
@@ -441,6 +445,7 @@ function ControlesPendientesPage({ api, onOpenPaciente }) {
 
 function TurnosHoyPage({ api, onOpenAgenda }) {
   const [turnos, setTurnos] = useState([]);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const today = new Date().toLocaleDateString('en-CA');
@@ -464,6 +469,20 @@ function TurnosHoyPage({ api, onOpenAgenda }) {
     return () => window.removeEventListener('consultorio:agenda-updated', loadTurnos);
   }, [loadTurnos]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(new Date()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const turnosPendientes = turnos.filter((turno) => {
+    if (['ATENDIDO', 'CANCELADO'].includes(turno.estado)) return false;
+    if (!turno.hora) return true;
+    const [hours, minutes] = turno.hora.slice(0, 5).split(':').map(Number);
+    const appointmentTime = new Date(currentTime);
+    appointmentTime.setHours(hours, minutes, 0, 0);
+    return appointmentTime >= currentTime;
+  });
+
   const todayLabel = new Intl.DateTimeFormat('es-AR', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   }).format(new Date());
@@ -475,11 +494,11 @@ function TurnosHoyPage({ api, onOpenAgenda }) {
         <button className="primary-button" onClick={onOpenAgenda}><CalendarDays size={18} />Ver agenda completa</button>
       </div>
       {error && <div className="form-error wide">{error}</div>}
-      <div className="today-summary"><strong>{turnos.length}</strong><span>{turnos.length === 1 ? 'turno programado' : 'turnos programados'}</span></div>
+      <div className="today-summary"><strong>{turnosPendientes.length}</strong><span>{turnosPendientes.length === 1 ? 'turno programado' : 'turnos programados'}</span></div>
       {loading && <div className="today-empty">Cargando turnos…</div>}
       {!loading && turnos.length === 0 && <div className="today-empty"><CalendarDays size={30} /><strong>No hay turnos para hoy</strong><span>Podés crear uno desde la agenda.</span><button className="primary-button" onClick={onOpenAgenda}>Agendar turno</button></div>}
-      {!loading && turnos.length > 0 && <div className="today-appointments">
-        {turnos.map((turno) => <article className="today-appointment" key={turno.id}>
+      {!loading && turnosPendientes.length > 0 && <div className="today-appointments">
+        {turnosPendientes.map((turno) => <article className="today-appointment" key={turno.id}>
           <div className="today-time">{turno.hora?.slice(0, 5)}</div>
           <div className="today-patient"><strong>{turno.pacienteNombre} {turno.pacienteApellido}</strong><span>{turno.motivoConsulta || 'Sin motivo especificado'}</span></div>
           <span className="today-type">{turno.tipoCita === 'PROCEDIMIENTO' ? 'Procedimiento' : 'Consulta'}</span>
@@ -491,7 +510,8 @@ function TurnosHoyPage({ api, onOpenAgenda }) {
 }
 
 function FacturacionPage({ api }) {
-  const [items, setItems] = useState([]);
+  const [allItems, setItems] = useState([]);
+  const [buscarPaciente, setBuscarPaciente] = useState('');
   const [pacientes, setPacientes] = useState([]);
   const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -505,7 +525,13 @@ function FacturacionPage({ api }) {
     } catch (exception) { setError(exception.message); } finally { setLoading(false); }
   }, [api]);
   useEffect(() => { loadData(); }, [loadData]);
-  const totals = useMemo(() => items.reduce((result, item) => ({ bruta: result.bruta + Number(item.facturacionBruta), neta: result.neta + Number(item.facturacionNeta) }), { bruta: 0, neta: 0 }), [items]);
+  const totals = useMemo(() => allItems.reduce((result, item) => ({ bruta: result.bruta + Number(item.facturacionBruta), neta: result.neta + Number(item.facturacionNeta) }), { bruta: 0, neta: 0 }), [allItems]);
+  const itemsFiltrados = useMemo(() => {
+    const query = buscarPaciente.trim().toLocaleLowerCase();
+    if (!query) return allItems;
+    return allItems.filter((item) => `${item.pacienteNombre || ''} ${item.pacienteApellido || ''}`.toLocaleLowerCase().includes(query));
+  }, [allItems, buscarPaciente]);
+  const items = itemsFiltrados;
   async function handleDelete(item) {
     if (!window.confirm(`¿Eliminar la facturación de ${item.procedimiento}?`)) return;
     setDeletingId(item.id); setError('');
@@ -513,17 +539,29 @@ function FacturacionPage({ api }) {
     catch (exception) { setError(exception.message); }
     finally { setDeletingId(null); }
   }
+  const searchField = <form className="search-bar billing-search" onSubmit={(event) => event.preventDefault()}><Search size={18} /><input aria-label="Buscar paciente en facturación" placeholder="Buscar paciente por nombre o apellido" value={buscarPaciente} onChange={(event) => setBuscarPaciente(event.target.value)} /></form>;
   return <section className="page billing-page">
     <div className="page-header"><div><span className="eyebrow">Administración</span><h2>Facturación</h2><p className="header-subtitle">Registro de ingresos por procedimientos.</p></div><button className="primary-button patient-action-button" onClick={() => setEditing(emptyFacturacion)}><Plus size={18} />Nueva facturación</button></div>
     <div className="billing-summary"><div><span>Facturación bruta total</span><strong>{formatCurrency(totals.bruta)}</strong></div><div><span>Facturación neta total</span><strong>{formatCurrency(totals.neta)}</strong></div><div><span>Diferencia total</span><strong>{formatCurrency(totals.bruta - totals.neta)}</strong></div></div>
+    {searchField}
     {error && <div className="form-error wide">{error}</div>}
     <div className="table-wrap billing-table"><table><thead><tr><th>Procedimiento</th><th>Cliente</th><th>Facturación bruta</th><th>Facturación neta</th><th>Diferencia</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>
       {loading && <tr><td colSpan="7">Cargando facturaciones...</td></tr>}
       {!loading && items.length === 0 && <tr><td colSpan="7">No hay facturaciones cargadas.</td></tr>}
       {!loading && items.map((item) => <tr key={item.id}><td><strong>{item.procedimiento}</strong></td><td>{item.pacienteApellido}, {item.pacienteNombre}</td><td>{formatCurrency(item.facturacionBruta)}</td><td>{formatCurrency(item.facturacionNeta)}</td><td>{formatCurrency(item.diferencia)}</td><td>{formatDate(item.fecha)}</td><td className="row-actions"><button onClick={() => setEditing(item)}>Editar</button><button className="delete-patient-button" disabled={deletingId === item.id} onClick={() => handleDelete(item)}><Trash2 size={16} />{deletingId === item.id ? 'Eliminando…' : 'Eliminar'}</button></td></tr>)}
     </tbody></table></div>
+    <OtrosGastosPanel api={api} />
     {editing && <FacturacionModal api={api} item={editing} pacientes={pacientes} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await loadData(); }} />}
   </section>;
+}
+
+function OtrosGastosPanel({ api }) {
+  const empty = { descripcion: '', categoria: 'Otros', monto: '', fecha: new Date().toLocaleDateString('en-CA'), observacion: '' };
+  const [form, setForm] = useState(empty); const [items, setItems] = useState([]); const [error, setError] = useState('');
+  const load = useCallback(() => api.listOtrosGastos().then(setItems).catch((e) => setError(e.message)), [api]);
+  useEffect(() => { load(); }, [load]);
+  async function submit(event) { event.preventDefault(); setError(''); try { await api.createOtroGasto({ ...form, monto: Number(form.monto) }); setForm(empty); await load(); } catch (e) { setError(e.message); } }
+  return <section className="other-expenses"><h3>Otros gastos</h3><form className="form-grid" onSubmit={submit}><Field label="Descripción" value={form.descripcion} onChange={(v) => setForm({...form, descripcion:v})} required /><Field label="Categoría" value={form.categoria} onChange={(v) => setForm({...form, categoria:v})} required /><Field label="Monto" type="number" value={form.monto} onChange={(v) => setForm({...form, monto:v})} required min="0" step="0.01" /><Field label="Fecha" type="date" value={form.fecha} onChange={(v) => setForm({...form, fecha:v})} required /><TextArea label="Observación" value={form.observacion} onChange={(v) => setForm({...form, observacion:v})} /><button className="primary-button" type="submit">Registrar gasto</button></form>{error && <div className="form-error">{error}</div>}<div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Monto</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td>{formatDate(item.fecha)}</td><td>{item.categoria}</td><td>{item.descripcion}</td><td>{formatCurrency(item.monto)}</td></tr>)}</tbody></table></div></section>;
 }
 
 function FacturacionModal({ api, item, pacientes, onClose, onSaved }) {
@@ -879,6 +917,7 @@ function ProcedimientosTab({ api, pacienteId, onItemsLoaded }) {
       emptyItem={emptyProcedimiento}
       loadItems={() => api.listProcedimientos(pacienteId)}
       createItem={(data) => api.createProcedimiento(pacienteId, data)}
+      deleteItem={(item) => api.deleteProcedimiento(item.id)}
       onItemsLoaded={onItemsLoaded}
       fields={[
         ['fecha', 'Fecha', 'date'],
@@ -914,10 +953,11 @@ function ProcedimientosTab({ api, pacienteId, onItemsLoaded }) {
   );
 }
 
-function TimelineTab({ title, emptyItem, loadItems, createItem, fields, renderItem, onItemsLoaded }) {
+function TimelineTab({ title, emptyItem, loadItems, createItem, deleteItem, fields, renderItem, onItemsLoaded }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyItem);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   async function load() {
     const nextItems = await loadItems();
@@ -940,6 +980,7 @@ function TimelineTab({ title, emptyItem, loadItems, createItem, fields, renderIt
       await createItem(form);
       setForm(emptyItem);
       await load();
+      setSuccess('✓ Procedimiento registrado correctamente');
     } catch (exception) {
       setError(exception.message);
     }
@@ -968,11 +1009,12 @@ function TimelineTab({ title, emptyItem, loadItems, createItem, fields, renderIt
           />
         ))}
         {error && <div className="form-error">{error}</div>}
+        {success && <div className="success-message">{success}</div>}
         <button className="primary-button" type="submit">Guardar</button>
       </form>
       <div className="timeline">
         {items.length === 0 && <p className="empty-state">No hay registros cargados.</p>}
-        {items.map((item) => <article className="timeline-item" key={item.id}>{renderItem(item)}</article>)}
+        {items.map((item) => <article className="timeline-item" key={item.id}>{renderItem(item)}{deleteItem && <button type="button" className="delete-patient-button" onClick={async () => { if (!window.confirm('¿Seguro que querés eliminar este procedimiento?')) return; try { await deleteItem(item); await load(); setSuccess('Procedimiento eliminado correctamente'); } catch (exception) { setError(exception.message); } }}>Eliminar</button>}</article>)}
       </div>
     </div>
   );

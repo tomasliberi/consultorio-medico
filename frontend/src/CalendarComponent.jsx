@@ -153,13 +153,22 @@ export default function CalendarComponent({ api }) {
     catch (e) { setError(e.message); }
   }
 
+  async function updateStatus(status) {
+    try {
+      const updated = await api.actualizarEstadoCita(selectedEvent.id, status);
+      setSelectedEvent(null);
+      setEvents((current) => current.map((item) => item.id === updated.id ? updated : item));
+      window.dispatchEvent(new CustomEvent('consultorio:agenda-updated'));
+    } catch (e) { setError(e.message); }
+  }
+
   return <section className="page agenda-page">
     <div className="page-header agenda-titlebar"><div><span className="eyebrow">Organización diaria</span><h2>Agenda</h2><p className="header-subtitle">Turnos, pacientes y seguimiento de señas.</p></div><button className="primary-button" onClick={() => openForm()}><Plus size={18}/>Nuevo turno</button></div>
     {error && <div className="form-error agenda-error">{error}</div>}
     {loading && <div className="agenda-loading">Cargando agenda…</div>}
     <div className="calendar-container">
       <div className="calendar-legend"><span><i className="legend-dot paid"/>Seña pagada</span><span><i className="legend-dot pending"/>Seña pendiente</span></div>
-      <Calendar localizer={localizer} culture="es" events={calendarEvents} date={date} view={view} onNavigate={setDate} onView={setView} onSelectSlot={({ start }) => openForm(start)} onSelectEvent={setSelectedEvent} selectable popup startAccessor="start" endAccessor="end" views={['month','week','day','agenda']} messages={{ next:'Siguiente', previous:'Anterior', today:'Hoy', month:'Mes', week:'Semana', day:'Día', agenda:'Lista', date:'Fecha', time:'Hora', event:'Turno', noEventsInRange:'No hay turnos en este período.' }} eventPropGetter={(event) => ({ className: event.seniaPagada ? 'appointment-paid' : 'appointment-pending' })}/>
+      <Calendar localizer={localizer} culture="es" events={calendarEvents} date={date} view={view} onNavigate={setDate} onView={setView} onSelectSlot={({ start }) => openForm(start)} onSelectEvent={setSelectedEvent} selectable popup startAccessor="start" endAccessor="end" views={['month','week','day','agenda']} messages={{ next:'Siguiente', previous:'Anterior', today:'Hoy', month:'Mes', week:'Semana', day:'Día', agenda:'Lista', date:'Fecha', time:'Hora', event:'Turno', noEventsInRange:'No hay turnos en este período.' }} eventPropGetter={(event) => ({ className: `appointment-status-${(event.estado || 'PENDIENTE').toLowerCase()}` })}/>
     </div>
 
     {showForm && <div className="modal-backdrop" onMouseDown={() => setShowForm(false)}><section className="modal agenda-modal" onMouseDown={(e) => e.stopPropagation()}>
@@ -199,8 +208,8 @@ export default function CalendarComponent({ api }) {
 
     {selectedEvent && <div className="modal-backdrop" onMouseDown={()=>setSelectedEvent(null)}><section className="modal agenda-modal event-card" onMouseDown={(e)=>e.stopPropagation()}>
       <div className="modal-header"><div><span className="eyebrow">Detalle del turno</span><h3>{selectedEvent.pacienteNombre} {selectedEvent.pacienteApellido}</h3></div><button onClick={()=>setSelectedEvent(null)}><X size={20}/></button></div>
-      <div className="event-card-body"><div className="event-date"><CalendarDays size={20}/><strong>{format(selectedEvent.start,"EEEE d 'de' MMMM · HH:mm",{locale:es})}</strong></div><p><b>DNI:</b> {pacientes.find((p)=>p.id===selectedEvent.pacienteId)?.dni || '—'}</p><p><b>Tipo:</b> {selectedEvent.tipoCita==='PROCEDIMIENTO'?'Procedimiento':'Consulta'}</p><p><b>Motivo:</b> {selectedEvent.motivoConsulta}</p>{selectedEvent.observaciones&&<p><b>Observaciones:</b> {selectedEvent.observaciones}</p>}<div className={`deposit-status ${selectedEvent.seniaPagada?'paid':'pending'}`}>{selectedEvent.seniaPagada?<CheckCircle size={18}/>:<AlertCircle size={18}/>} {selectedEvent.seniaPagada?`Seña pagada: $${Number(selectedEvent.montoSenia || 0).toLocaleString('es-AR')}`:'Seña pendiente'}</div></div>
-      <div className="agenda-actions"><button className="danger-button" onClick={deleteTurno}><Trash2 size={17}/>Cancelar turno</button><button className="secondary-button" onClick={()=>editEvent(selectedEvent)}>Editar turno</button><button className="secondary-button" onClick={()=>setSelectedEvent(null)}>Cerrar</button></div>
+      <div className="event-card-body"><div className="event-date"><CalendarDays size={20}/><strong>{format(selectedEvent.start,"EEEE d 'de' MMMM · HH:mm",{locale:es})}</strong></div><p><b>DNI:</b> {pacientes.find((p)=>p.id===selectedEvent.pacienteId)?.dni || '—'}</p><p><b>Tipo:</b> {selectedEvent.tipoCita==='PROCEDIMIENTO'?'Procedimiento':'Consulta'}</p><p><b>Estado:</b> {selectedEvent.estado || 'PENDIENTE'}</p><p><b>Motivo:</b> {selectedEvent.motivoConsulta}</p>{selectedEvent.observaciones&&<p><b>Observaciones:</b> {selectedEvent.observaciones}</p>}<div className={`deposit-status ${selectedEvent.seniaPagada?'paid':'pending'}`}>{selectedEvent.seniaPagada?<CheckCircle size={18}/>:<AlertCircle size={18}/>} {selectedEvent.seniaPagada?`Seña pagada: $${Number(selectedEvent.montoSenia || 0).toLocaleString('es-AR')}`:'Seña pendiente'}</div></div>
+      <div className="agenda-actions"><button className="danger-button" onClick={()=>updateStatus('CANCELADO')}>Cancelar turno</button><button className="secondary-button" onClick={()=>updateStatus('CONFIRMADO')}>Confirmado</button><button className="secondary-button" onClick={()=>updateStatus('ATENDIDO')}>Atendido</button><button className="secondary-button" onClick={()=>editEvent(selectedEvent)}>Editar turno</button><button className="secondary-button" onClick={()=>setSelectedEvent(null)}>Cerrar</button></div>
     </section></div>}
   </section>;
 }

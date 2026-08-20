@@ -71,6 +71,12 @@ public class ProcedimientoService {
         return toResponse(procedimiento);
     }
 
+    @Transactional
+    public void eliminar(Long id) {
+        Procedimiento procedimiento = buscarEntidad(id);
+        procedimientoRepository.delete(procedimiento);
+    }
+
     private Procedimiento buscarEntidad(Long id) {
         return procedimientoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Procedimiento no encontrado."));

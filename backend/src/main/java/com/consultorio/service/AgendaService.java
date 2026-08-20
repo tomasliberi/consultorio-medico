@@ -98,6 +98,7 @@ public class AgendaService {
         consulta.setObservaciones(request.observaciones());
         
         consulta.setTipoCita(request.tipoCita() == null ? Consulta.TipoCita.CONSULTA : request.tipoCita());
+        consulta.setEstado(Consulta.EstadoCita.PENDIENTE);
         
         if (request.seniaPagada() != null) {
             consulta.setSeniaPagada(request.seniaPagada());
@@ -125,6 +126,18 @@ public class AgendaService {
         consulta.setSeniaPagada(Boolean.TRUE.equals(request.seniaPagada()));
         consulta.setMontoSenia(request.montoSenia());
 
+        return toAgendaEventoResponse(consultaRepository.save(consulta));
+    }
+
+    @Transactional
+    public AgendaEventoResponse actualizarEstado(Long citaId, String estado) {
+        Consulta consulta = consultaRepository.findById(citaId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cita no encontrada."));
+        try {
+            consulta.setEstado(Consulta.EstadoCita.valueOf(estado.trim().toUpperCase()));
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Estado de turno inválido.");
+        }
         return toAgendaEventoResponse(consultaRepository.save(consulta));
     }
 
@@ -292,7 +305,7 @@ public class AgendaService {
             consulta.getTipoCita().name(),
             consulta.getSeniaPagada(),
             consulta.getMontoSenia(),
-            "confirmada"
+            consulta.getEstado().name()
         );
     }
 }

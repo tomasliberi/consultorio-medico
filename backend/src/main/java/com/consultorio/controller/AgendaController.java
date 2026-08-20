@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/agenda")
@@ -66,6 +67,11 @@ public class AgendaController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void cancelarCita(@PathVariable Long citaId) {
         agendaService.eliminarCita(citaId);
+    }
+
+    @PutMapping("/citas/{citaId}/estado")
+    public AgendaEventoResponse actualizarEstado(@PathVariable Long citaId, @RequestBody Map<String, String> body) {
+        return agendaService.actualizarEstado(citaId, body.get("estado"));
     }
 
     @PutMapping("/citas/{citaId}/reasignar")

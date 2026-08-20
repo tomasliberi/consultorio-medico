@@ -32,6 +32,10 @@ public class Consulta {
         CONSULTA, PROCEDIMIENTO
     }
 
+    public enum EstadoCita {
+        PENDIENTE, CONFIRMADO, ATENDIDO, CANCELADO
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -50,6 +54,10 @@ public class Consulta {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TipoCita tipoCita = TipoCita.CONSULTA;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private EstadoCita estado = EstadoCita.PENDIENTE;
 
     @Column(nullable = false)
     private Boolean seniaPagada = false;
@@ -126,6 +134,9 @@ public class Consulta {
     public void setTipoCita(TipoCita tipoCita) {
         this.tipoCita = tipoCita;
     }
+
+    public EstadoCita getEstado() { return estado; }
+    public void setEstado(EstadoCita estado) { this.estado = estado == null ? EstadoCita.PENDIENTE : estado; }
 
     public Boolean getSeniaPagada() {
         return seniaPagada;
