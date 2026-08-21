@@ -13,10 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class FacturacionService {
     private final FacturacionRepository repository;
     private final PacienteService pacienteService;
+    private final AuditoriaService auditoriaService;
 
-    public FacturacionService(FacturacionRepository repository, PacienteService pacienteService) {
+    public FacturacionService(FacturacionRepository repository, PacienteService pacienteService, AuditoriaService auditoriaService) {
         this.repository = repository;
         this.pacienteService = pacienteService;
+        this.auditoriaService = auditoriaService;
     }
 
     @Transactional(readOnly = true)
@@ -28,18 +30,26 @@ public class FacturacionService {
     public FacturacionResponse crear(FacturacionRequest request) {
         Facturacion facturacion = new Facturacion();
         aplicar(facturacion, request);
-        return toResponse(repository.save(facturacion));
+        Facturacion guardada = repository.save(facturacion);
+        auditoriaService.registrar("CREAR", "FACTURACION", guardada.getId(), guardada.getPaciente().getId(), detalle(guardada));
+        return toResponse(guardada);
     }
 
     @Transactional
     public FacturacionResponse actualizar(Long id, FacturacionRequest request) {
         Facturacion facturacion = buscar(id);
+        String anterior = detalle(facturacion);
         aplicar(facturacion, request);
-        return toResponse(facturacion);
+        Facturacion actualizada = repository.save(facturacion);
+        auditoriaService.registrar("MODIFICAR", "FACTURACION", id, actualizada.getPaciente().getId(), "{\"before\":" + anterior + ",\"after\":" + detalle(actualizada) + "}");
+        return toResponse(actualizada);
     }
 
     @Transactional
-    public void eliminar(Long id) { repository.delete(buscar(id)); }
+    public void eliminar(Long id) { Facturacion facturacion = buscar(id); auditoriaService.registrar("ELIMINAR", "FACTURACION", id, facturacion.getPaciente().getId(), "{\"deleted\":true,\"fecha\":\"" + facturacion.getFecha() + "\"}"); repository.delete(facturacion); }
+
+    private String detalle(Facturacion item) { return "{\"procedimiento\":\"" + safe(item.getProcedimiento()) + "\",\"bruta\":" + item.getFacturacionBruta() + ",\"neta\":" + item.getFacturacionNeta() + ",\"fecha\":\"" + item.getFecha() + "\"}"; }
+    private String safe(String value) { return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\""); }
 
     private Facturacion buscar(Long id) {
         return repository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Facturación no encontrada."));

@@ -10,9 +10,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class OtroGastoService {
     private final OtroGastoRepository repository;
+    private final AuditoriaService auditoriaService;
 
-    public OtroGastoService(OtroGastoRepository repository) {
+    public OtroGastoService(OtroGastoRepository repository, AuditoriaService auditoriaService) {
         this.repository = repository;
+        this.auditoriaService = auditoriaService;
     }
 
     @Transactional(readOnly = true)
@@ -22,27 +24,36 @@ public class OtroGastoService {
 
     @Transactional
     public OtroGasto crear(OtroGasto gasto) {
-        return repository.save(gasto);
+        OtroGasto guardado = repository.save(gasto);
+        auditoriaService.registrar("CREAR", "OTRO_GASTO", guardado.getId(), null, detalle(guardado));
+        return guardado;
     }
 
     @Transactional
     public OtroGasto actualizar(Long id, OtroGasto datos) {
         OtroGasto gasto = buscar(id);
+        String detalleOriginal = detalle(gasto);
         gasto.setDescripcion(datos.getDescripcion());
         gasto.setCategoria(datos.getCategoria());
         gasto.setMonto(datos.getMonto());
         gasto.setFecha(datos.getFecha());
         gasto.setObservacion(datos.getObservacion());
-        return repository.save(gasto);
+        OtroGasto actualizado = repository.save(gasto);
+        auditoriaService.registrar("MODIFICAR", "OTRO_GASTO", id, null, "{\"before\":" + detalleOriginal + ",\"after\":" + detalle(actualizado) + "}");
+        return actualizado;
     }
 
     @Transactional
     public void eliminar(Long id) {
-        repository.delete(buscar(id));
+        OtroGasto gasto = buscar(id);
+        auditoriaService.registrar("ELIMINAR", "OTRO_GASTO", id, null, "{\"before\":" + detalle(gasto) + "}");
+        repository.delete(gasto);
     }
 
     private OtroGasto buscar(Long id) {
         return repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Gasto no encontrado."));
     }
+    private String detalle(OtroGasto gasto) { return "{\"descripcion\":\"" + safe(gasto.getDescripcion()) + "\",\"categoria\":\"" + safe(gasto.getCategoria()) + "\",\"monto\":" + gasto.getMonto() + ",\"fecha\":\"" + gasto.getFecha() + "\"}"; }
+    private String safe(String value) { return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\""); }
 }
