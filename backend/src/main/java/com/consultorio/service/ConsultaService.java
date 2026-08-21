@@ -16,10 +16,12 @@ public class ConsultaService {
 
     private final ConsultaRepository consultaRepository;
     private final PacienteService pacienteService;
+    private final AuditoriaService auditoriaService;
 
-    public ConsultaService(ConsultaRepository consultaRepository, PacienteService pacienteService) {
+    public ConsultaService(ConsultaRepository consultaRepository, PacienteService pacienteService, AuditoriaService auditoriaService) {
         this.consultaRepository = consultaRepository;
         this.pacienteService = pacienteService;
+        this.auditoriaService = auditoriaService;
     }
 
     @Transactional(readOnly = true)
@@ -41,14 +43,18 @@ public class ConsultaService {
         Consulta consulta = new Consulta();
         consulta.setPaciente(paciente);
         aplicarDatos(consulta, request);
-        return toResponse(consultaRepository.save(consulta));
+        Consulta guardada = consultaRepository.save(consulta);
+        auditoriaService.registrar("CREAR", "CONSULTA", guardada.getId(), pacienteId, "{\"fields\":\"clinical-data\"}");
+        return toResponse(guardada);
     }
 
     @Transactional
     public ConsultaResponse actualizar(Long id, ConsultaRequest request) {
         Consulta consulta = buscarEntidad(id);
         aplicarDatos(consulta, request);
-        return toResponse(consulta);
+        Consulta actualizada = consultaRepository.save(consulta);
+        auditoriaService.registrar("MODIFICAR", "CONSULTA", id, consulta.getPaciente().getId(), "{\"fields\":\"clinical-data\"}");
+        return toResponse(actualizada);
     }
 
     @Transactional(readOnly = true)

@@ -17,13 +17,16 @@ public class ProcedimientoService {
 
     private final ProcedimientoRepository procedimientoRepository;
     private final PacienteService pacienteService;
+    private final AuditoriaService auditoriaService;
 
     public ProcedimientoService(
             ProcedimientoRepository procedimientoRepository,
-            PacienteService pacienteService
+            PacienteService pacienteService,
+            AuditoriaService auditoriaService
     ) {
         this.procedimientoRepository = procedimientoRepository;
         this.pacienteService = pacienteService;
+        this.auditoriaService = auditoriaService;
     }
 
     @Transactional(readOnly = true)
@@ -61,20 +64,26 @@ public class ProcedimientoService {
         Procedimiento procedimiento = new Procedimiento();
         procedimiento.setPaciente(paciente);
         aplicarDatos(procedimiento, request);
-        return toResponse(procedimientoRepository.save(procedimiento));
+        Procedimiento guardado = procedimientoRepository.save(procedimiento);
+        auditoriaService.registrar("CREAR", "PROCEDIMIENTO", guardado.getId(), pacienteId, "{\"fields\":\"clinical-data\"}");
+        return toResponse(guardado);
     }
 
     @Transactional
     public ProcedimientoResponse actualizar(Long id, ProcedimientoRequest request) {
         Procedimiento procedimiento = buscarEntidad(id);
         aplicarDatos(procedimiento, request);
-        return toResponse(procedimiento);
+        Procedimiento actualizado = procedimientoRepository.save(procedimiento);
+        auditoriaService.registrar("MODIFICAR", "PROCEDIMIENTO", id, procedimiento.getPaciente().getId(), "{\"fields\":\"clinical-data\"}");
+        return toResponse(actualizado);
     }
 
     @Transactional
     public void eliminar(Long id) {
         Procedimiento procedimiento = buscarEntidad(id);
         procedimientoRepository.delete(procedimiento);
+        auditoriaService.registrar("ELIMINAR", "PROCEDIMIENTO", id, procedimiento.getPaciente().getId(),
+                "{\"deleted\":true,\"fecha\":\"" + procedimiento.getFecha() + "\",\"nombre\":\"" + safeAudit(procedimiento.getNombre()) + "\"}");
     }
 
     private Procedimiento buscarEntidad(Long id) {
@@ -130,5 +139,9 @@ public class ProcedimientoService {
         }
 
         return EstadoControl.valueOf(request.estadoControl());
+    }
+
+    private String safeAudit(String value) {
+        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

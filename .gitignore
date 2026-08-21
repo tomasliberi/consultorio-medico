@@ -13,3 +13,11 @@ backend/target/
 .env.local
 *.env.local
 .tools/
+backups/
+*.sql.gz
+*.dump
+*.backup
+*.pem
+*.key
+*.p12
+*.jks

@@ -29,16 +29,19 @@ public class AgendaService {
     private final DisponibilidadRepository disponibilidadRepository;
     private final PacienteService pacienteService;
     private final ZoneId zoneId;
+    private final AuditoriaService auditoriaService;
 
     public AgendaService(
         ConsultaRepository consultaRepository,
         DisponibilidadRepository disponibilidadRepository,
         PacienteService pacienteService,
+        AuditoriaService auditoriaService,
         @Value("${app.zone-id:America/Argentina/Buenos_Aires}") String zoneId
     ) {
         this.consultaRepository = consultaRepository;
         this.disponibilidadRepository = disponibilidadRepository;
         this.pacienteService = pacienteService;
+        this.auditoriaService = auditoriaService;
         this.zoneId = ZoneId.of(zoneId);
     }
 
@@ -112,6 +115,7 @@ public class AgendaService {
         consulta.setMontoSenia(request.montoSenia());
 
         Consulta consultaGuardada = consultaRepository.save(consulta);
+        auditoriaService.registrar("CREAR", "CONSULTA", consultaGuardada.getId(), request.pacienteId(), "{\"source\":\"agenda\"}");
         return toAgendaEventoResponse(consultaGuardada);
     }
 
@@ -132,7 +136,9 @@ public class AgendaService {
         consulta.setSeniaPagada(Boolean.TRUE.equals(request.seniaPagada()));
         consulta.setMontoSenia(request.montoSenia());
 
-        return toAgendaEventoResponse(consultaRepository.save(consulta));
+        Consulta actualizada = consultaRepository.save(consulta);
+        auditoriaService.registrar("MODIFICAR", "CONSULTA", citaId, consulta.getPaciente().getId(), "{\"source\":\"agenda\"}");
+        return toAgendaEventoResponse(actualizada);
     }
 
     @Transactional
@@ -146,7 +152,9 @@ public class AgendaService {
         } catch (Exception exception) {
             throw new IllegalArgumentException("Estado de turno inválido.");
         }
-        return toAgendaEventoResponse(consultaRepository.save(consulta));
+        Consulta actualizada = consultaRepository.save(consulta);
+        auditoriaService.registrar("MODIFICAR", "CONSULTA", citaId, consulta.getPaciente().getId(), "{\"field\":\"estado\"}");
+        return toAgendaEventoResponse(actualizada);
     }
 
     @Transactional
@@ -183,6 +191,8 @@ public class AgendaService {
         if (consulta.getHora() == null) {
             throw new IllegalArgumentException("El registro clínico no es un turno de Agenda.");
         }
+        auditoriaService.registrar("ELIMINAR", "CONSULTA", citaId, consulta.getPaciente().getId(),
+                "{\"deleted\":true,\"fecha\":\"" + consulta.getFecha() + "\",\"hora\":\"" + consulta.getHora() + "\"}");
         consultaRepository.delete(consulta);
     }
 

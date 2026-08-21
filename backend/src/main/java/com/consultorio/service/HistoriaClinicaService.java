@@ -13,13 +13,16 @@ public class HistoriaClinicaService {
 
     private final HistoriaClinicaRepository historiaClinicaRepository;
     private final PacienteService pacienteService;
+    private final AuditoriaService auditoriaService;
 
     public HistoriaClinicaService(
             HistoriaClinicaRepository historiaClinicaRepository,
-            PacienteService pacienteService
+            PacienteService pacienteService,
+            AuditoriaService auditoriaService
     ) {
         this.historiaClinicaRepository = historiaClinicaRepository;
         this.pacienteService = pacienteService;
+        this.auditoriaService = auditoriaService;
     }
 
     @Transactional(readOnly = true)
@@ -37,13 +40,24 @@ public class HistoriaClinicaService {
         HistoriaClinica historiaClinica = historiaClinicaRepository.findByPacienteId(pacienteId)
                 .orElseGet(() -> nuevaHistoria(paciente));
 
+        boolean nueva = historiaClinica.getId() == null;
+        StringBuilder cambios = new StringBuilder("{\"changedFields\":[");
+        if (!java.util.Objects.equals(historiaClinica.getAntecedentes(), request.antecedentes())) cambios.append("\"antecedentes\",");
+        if (!java.util.Objects.equals(historiaClinica.getAlergias(), request.alergias())) cambios.append("\"alergias\",");
+        if (!java.util.Objects.equals(historiaClinica.getMedicacionHabitual(), request.medicacionHabitual())) cambios.append("\"medicacionHabitual\",");
+        if (!java.util.Objects.equals(historiaClinica.getEnfermedadesPrevias(), request.enfermedadesPrevias())) cambios.append("\"enfermedadesPrevias\",");
+        if (!java.util.Objects.equals(historiaClinica.getObservaciones(), request.observaciones())) cambios.append("\"observaciones\",");
+        if (cambios.charAt(cambios.length() - 1) == ',') cambios.setLength(cambios.length() - 1);
+        cambios.append("]}");
         historiaClinica.setAntecedentes(request.antecedentes());
         historiaClinica.setAlergias(request.alergias());
         historiaClinica.setMedicacionHabitual(request.medicacionHabitual());
         historiaClinica.setEnfermedadesPrevias(request.enfermedadesPrevias());
         historiaClinica.setObservaciones(request.observaciones());
 
-        return toResponse(historiaClinicaRepository.save(historiaClinica));
+        HistoriaClinica guardada = historiaClinicaRepository.save(historiaClinica);
+        auditoriaService.registrar(nueva ? "CREAR" : "MODIFICAR", "HISTORIA_CLINICA", guardada.getId(), pacienteId, cambios.toString());
+        return toResponse(guardada);
     }
 
     private HistoriaClinica nuevaHistoria(Paciente paciente) {

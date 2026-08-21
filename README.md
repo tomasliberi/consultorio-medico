@@ -175,6 +175,13 @@ El MVP cifra las contraseñas con BCrypt y exige autenticación en toda la API. 
 - Variables de entorno y secretos administrados fuera del repositorio.
 - Configuración de CORS para el dominio definitivo.
 
+## Backups de PostgreSQL
+
+Los scripts `scripts/backup-postgres.ps1` y `scripts/restore-postgres.ps1` requieren
+`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME` y `DB_PASSWORD` definidos en el entorno.
+Los backups se guardan en `backups/`, excluido de Git. El restore requiere escribir
+`RESTAURAR` y debe ejecutarse solo con una copia verificada.
+
 ## Licencia
 
 Este repositorio no incluye actualmente una licencia de uso.
