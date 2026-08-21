@@ -11,11 +11,13 @@ import com.consultorio.repository.ConsultaRepository;
 import com.consultorio.repository.HistoriaClinicaRepository;
 import com.consultorio.repository.PacienteRepository;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.Period;
-import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -24,15 +26,18 @@ public class PacienteService {
     private final PacienteRepository pacienteRepository;
     private final HistoriaClinicaRepository historiaClinicaRepository;
     private final ConsultaRepository consultaRepository;
+    private final ZoneId zoneId;
 
     public PacienteService(
             PacienteRepository pacienteRepository,
             HistoriaClinicaRepository historiaClinicaRepository,
-            ConsultaRepository consultaRepository
+            ConsultaRepository consultaRepository,
+            @Value("${app.zone-id:America/Argentina/Buenos_Aires}") String zoneId
     ) {
         this.pacienteRepository = pacienteRepository;
         this.historiaClinicaRepository = historiaClinicaRepository;
         this.consultaRepository = consultaRepository;
+        this.zoneId = ZoneId.of(zoneId);
     }
 
     @Transactional(readOnly = true)
@@ -131,14 +136,13 @@ public class PacienteService {
     }
 
     private Optional<Consulta> buscarProximaCita(Long pacienteId) {
-        LocalDate hoy = LocalDate.now();
-        LocalTime ahora = LocalTime.now().withSecond(0).withNano(0);
+        LocalDateTime ahora = LocalDateTime.now(zoneId).withSecond(0).withNano(0);
 
         return consultaRepository.findByPacienteIdAndHoraIsNotNullOrderByFechaAscHoraAsc(pacienteId).stream()
                 .filter(consulta -> consulta.getFecha() != null)
                 .filter(consulta -> consulta.getHora() != null)
-                .filter(consulta -> consulta.getFecha().isAfter(hoy)
-                        || (consulta.getFecha().isEqual(hoy) && !consulta.getHora().isBefore(ahora)))
+                .filter(consulta -> consulta.getEstado() != Consulta.EstadoCita.CANCELO)
+                .filter(consulta -> !LocalDateTime.of(consulta.getFecha(), consulta.getHora()).isBefore(ahora))
                 .findFirst();
     }
 

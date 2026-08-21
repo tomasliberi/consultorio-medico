@@ -33,7 +33,7 @@ public class Consulta {
     }
 
     public enum EstadoCita {
-        PENDIENTE, CONFIRMADO, ATENDIDO, CANCELADO
+        PENDIENTE, ASISTIO, CANCELO
     }
 
     @Id

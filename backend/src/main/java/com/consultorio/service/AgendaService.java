@@ -15,9 +15,11 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -26,15 +28,18 @@ public class AgendaService {
     private final ConsultaRepository consultaRepository;
     private final DisponibilidadRepository disponibilidadRepository;
     private final PacienteService pacienteService;
+    private final ZoneId zoneId;
 
     public AgendaService(
         ConsultaRepository consultaRepository,
         DisponibilidadRepository disponibilidadRepository,
-        PacienteService pacienteService
+        PacienteService pacienteService,
+        @Value("${app.zone-id:America/Argentina/Buenos_Aires}") String zoneId
     ) {
         this.consultaRepository = consultaRepository;
         this.disponibilidadRepository = disponibilidadRepository;
         this.pacienteService = pacienteService;
+        this.zoneId = ZoneId.of(zoneId);
     }
 
     @Transactional(readOnly = true)
@@ -71,7 +76,8 @@ public class AgendaService {
         int duracion = disponibilidad.getDuracionCitasMinutos();
 
         while (horaActual.plusMinutes(duracion).compareTo(horaFin) <= 0) {
-            if (!estaOcupado(fecha, horaActual, horaActual.plusMinutes(duracion), citasDelDia)) {
+            if (!esHorarioVencido(fecha, horaActual)
+                    && !estaOcupado(fecha, horaActual, horaActual.plusMinutes(duracion), citasDelDia)) {
                 horariosDisponibles.add(horaActual);
             }
             horaActual = horaActual.plusMinutes(duracion);
@@ -134,7 +140,9 @@ public class AgendaService {
         Consulta consulta = consultaRepository.findById(citaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cita no encontrada."));
         try {
-            consulta.setEstado(Consulta.EstadoCita.valueOf(estado.trim().toUpperCase()));
+            String normalizado = estado == null ? "" : estado.trim().toUpperCase()
+                    .replace("Í", "I").replace("Ó", "O");
+            consulta.setEstado(Consulta.EstadoCita.valueOf(normalizado));
         } catch (Exception exception) {
             throw new IllegalArgumentException("Estado de turno inválido.");
         }
@@ -213,7 +221,7 @@ public class AgendaService {
     }
 
     private void validarFechaYHorarioLaboral(LocalDate fecha, LocalTime hora) {
-        LocalDateTime ahora = LocalDateTime.now().withSecond(0).withNano(0);
+        LocalDateTime ahora = LocalDateTime.now(zoneId).withSecond(0).withNano(0);
         if (LocalDateTime.of(fecha, hora).isBefore(ahora)) {
             throw new IllegalArgumentException("No se pueden agendar turnos en una fecha u hora anterior.");
         }
@@ -223,6 +231,12 @@ public class AgendaService {
         if (hora.isBefore(apertura) || hora.isAfter(cierre)) {
             throw new IllegalArgumentException("El horario laboral es de 06:00 a 21:00.");
         }
+    }
+
+    private boolean esHorarioVencido(LocalDate fecha, LocalTime hora) {
+        return LocalDateTime.of(fecha, hora).isBefore(
+                LocalDateTime.now(zoneId).withSecond(0).withNano(0)
+        );
     }
 
     private void validarSinConflictos(LocalDate fecha, LocalTime hora) {
@@ -235,7 +249,8 @@ public class AgendaService {
                 .toList();
 
         boolean mismoHorarioOcupado = citasDelDia.stream()
-                .anyMatch(cita -> cita.getHora() != null
+                .anyMatch(cita -> cita.getEstado() != Consulta.EstadoCita.CANCELO
+                        && cita.getHora() != null
                         && cita.getHora().equals(hora));
         if (mismoHorarioOcupado) {
             throw new IllegalArgumentException("Ya existe un turno agendado para esa fecha y hora.");
@@ -260,7 +275,7 @@ public class AgendaService {
 
     private boolean estaOcupado(LocalDate fecha, LocalTime horaInicio, LocalTime horaFin, List<Consulta> citas) {
         for (Consulta cita : citas) {
-            if (cita.getHora() != null) {
+            if (cita.getEstado() != Consulta.EstadoCita.CANCELO && cita.getHora() != null) {
                 LocalTime horaActual = cita.getHora();
                 DayOfWeek dayOfWeek = fecha.getDayOfWeek();
                 Disponibilidad.DiaSemana diaSemana = convertDayOfWeek(dayOfWeek);

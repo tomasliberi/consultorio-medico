@@ -357,9 +357,8 @@
 /* Agenda integrada */
 .agenda-page { max-width: none; }
 .appointment-status-pendiente { background: #ead7c8 !important; border-left: 4px solid #a56b4f !important; }
-.appointment-status-confirmado { background: #d9e8f1 !important; border-left: 4px solid #4b86a4 !important; }
-.appointment-status-atendido { background: #dcebdc !important; border-left: 4px solid #5d9561 !important; opacity: .72; }
-.appointment-status-cancelado { background: #f0dada !important; border-left: 4px solid #b45d5d !important; opacity: .62; text-decoration: line-through; }
+.appointment-status-asistio { background: #dcebdc !important; border-left: 4px solid #4f8a57 !important; }
+.appointment-status-cancelo { background: #f0dada !important; border-left: 4px solid #b45d5d !important; }
 .agenda-titlebar { align-items: flex-end; }
 .agenda-error { margin-bottom: 14px; }
 .agenda-loading { margin: 0 0 12px; color: #7b6f69; }
@@ -404,6 +403,8 @@
 .new-patient-save { display: flex; justify-content: flex-end; }
 .secondary-button, .danger-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; border: 1px solid #dfd0c7; border-radius: 10px; padding: 0 14px; background: #fffaf7; color: #51443f; }
 .danger-button { margin-right: auto; border-color: #e6b8ad; color: #9c3f31; background: #fff4f1; }
+.status-action-attended { border-color: #9bc2a1; color: #35633e; background: #e8f3e9; }
+.status-action-cancelled { border-color: #d9a09a; color: #963f35; background: #fae4e1; }
 .event-card-body { padding: 22px; color: #51443f; }
 .event-date { display: flex; align-items: center; gap: 10px; border-radius: 12px; padding: 14px; background: #f8ebe4; text-transform: capitalize; }
 .deposit-status { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; border-radius: 999px; padding: 8px 12px; font-weight: 700; }

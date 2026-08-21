@@ -95,6 +95,7 @@ El backend admite las siguientes variables de entorno:
 | `INITIAL_USER_USERNAME` | Sin valor predeterminado |
 | `INITIAL_USER_PASSWORD` | Sin valor predeterminado |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` |
+| `APP_ZONE_ID` | `America/Argentina/Buenos_Aires` |
 
 Los valores de ejemplo no son secretos reales y deben reemplazarse antes de iniciar el sistema.
 

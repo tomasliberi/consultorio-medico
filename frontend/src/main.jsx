@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   CalendarDays,
@@ -59,6 +59,7 @@ const emptyProcedimiento = {
 };
 
 const emptyFacturacion = {
+  tipo: 'PROCEDIMIENTO',
   procedimiento: '',
   pacienteId: '',
   facturacionBruta: '',
@@ -210,6 +211,8 @@ function createApiClient() {
     deleteFacturacion: (id) => request(`/facturaciones/${id}`, { method: 'DELETE' }),
     listOtrosGastos: () => request('/otros-gastos'),
     createOtroGasto: (data) => request('/otros-gastos', { method: 'POST', body: JSON.stringify(data) }),
+    updateOtroGasto: (id, data) => request(`/otros-gastos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteOtroGasto: (id) => request(`/otros-gastos/${id}`, { method: 'DELETE' }),
   };
 }
 
@@ -474,14 +477,23 @@ function TurnosHoyPage({ api, onOpenAgenda }) {
     return () => window.clearInterval(timer);
   }, []);
 
-  const turnosPendientes = turnos.filter((turno) => {
-    if (['ATENDIDO', 'CANCELADO'].includes(turno.estado)) return false;
+  function isExpired(turno) {
     if (!turno.hora) return true;
     const [hours, minutes] = turno.hora.slice(0, 5).split(':').map(Number);
-    const appointmentTime = new Date(currentTime);
-    appointmentTime.setHours(hours, minutes, 0, 0);
-    return appointmentTime >= currentTime;
-  });
+    const [year, month, day] = turno.fecha.split('-').map(Number);
+    const appointmentTime = new Date(year, month - 1, day, hours, minutes, 0, 0);
+    return appointmentTime < currentTime;
+  }
+
+  async function updateStatus(turno, estado) {
+    setError('');
+    try {
+      const updated = await api.actualizarEstadoCita(turno.id, estado);
+      setTurnos((current) => current.map((item) => item.id === turno.id ? updated : item));
+    } catch (exception) {
+      setError(exception.message);
+    }
+  }
 
   const todayLabel = new Intl.DateTimeFormat('es-AR', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -494,14 +506,15 @@ function TurnosHoyPage({ api, onOpenAgenda }) {
         <button className="primary-button" onClick={onOpenAgenda}><CalendarDays size={18} />Ver agenda completa</button>
       </div>
       {error && <div className="form-error wide">{error}</div>}
-      <div className="today-summary"><strong>{turnosPendientes.length}</strong><span>{turnosPendientes.length === 1 ? 'turno programado' : 'turnos programados'}</span></div>
+      <div className="today-summary"><strong>{turnos.length}</strong><span>{turnos.length === 1 ? 'turno del día' : 'turnos del día'}</span></div>
       {loading && <div className="today-empty">Cargando turnos…</div>}
       {!loading && turnos.length === 0 && <div className="today-empty"><CalendarDays size={30} /><strong>No hay turnos para hoy</strong><span>Podés crear uno desde la agenda.</span><button className="primary-button" onClick={onOpenAgenda}>Agendar turno</button></div>}
-      {!loading && turnosPendientes.length > 0 && <div className="today-appointments">
-        {turnosPendientes.map((turno) => <article className="today-appointment" key={turno.id}>
+      {!loading && turnos.length > 0 && <div className="today-appointments">
+        {turnos.map((turno) => <article className={`today-appointment appointment-state-${(turno.estado || 'PENDIENTE').toLowerCase()}${isExpired(turno) ? ' expired' : ''}`} key={turno.id}>
           <div className="today-time">{turno.hora?.slice(0, 5)}</div>
           <div className="today-patient"><strong>{turno.pacienteNombre} {turno.pacienteApellido}</strong><span>{turno.motivoConsulta || 'Sin motivo especificado'}</span></div>
           <span className="today-type">{turno.tipoCita === 'PROCEDIMIENTO' ? 'Procedimiento' : 'Consulta'}</span>
+          <label className={`today-status status-${(turno.estado || 'PENDIENTE').toLowerCase()}`}>Estado<select value={turno.estado || 'PENDIENTE'} onChange={(event) => updateStatus(turno, event.target.value)}><option value="PENDIENTE">PENDIENTE</option><option value="ASISTIO">ASISTIÓ</option><option value="CANCELO">CANCELÓ</option></select></label>
           <span className={turno.seniaPagada ? 'today-deposit paid' : 'today-deposit pending'}>{turno.seniaPagada ? 'Seña pagada' : 'Seña pendiente'}</span>
         </article>)}
       </div>}
@@ -511,6 +524,7 @@ function TurnosHoyPage({ api, onOpenAgenda }) {
 
 function FacturacionPage({ api }) {
   const [allItems, setItems] = useState([]);
+  const [gastos, setGastos] = useState([]);
   const [buscarPaciente, setBuscarPaciente] = useState('');
   const [pacientes, setPacientes] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -520,16 +534,20 @@ function FacturacionPage({ api }) {
   const loadData = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [facturaciones, pacientesRegistrados] = await Promise.all([api.listFacturaciones(), api.listPacientes('')]);
-      setItems(facturaciones); setPacientes(pacientesRegistrados);
+      const [facturaciones, gastosRegistrados, pacientesRegistrados] = await Promise.all([api.listFacturaciones(), api.listOtrosGastos(), api.listPacientes('')]);
+      setItems(facturaciones); setGastos(gastosRegistrados); setPacientes(pacientesRegistrados);
     } catch (exception) { setError(exception.message); } finally { setLoading(false); }
   }, [api]);
   useEffect(() => { loadData(); }, [loadData]);
-  const totals = useMemo(() => allItems.reduce((result, item) => ({ bruta: result.bruta + Number(item.facturacionBruta), neta: result.neta + Number(item.facturacionNeta) }), { bruta: 0, neta: 0 }), [allItems]);
+  const totals = useMemo(() => {
+    const procedimientos = allItems.reduce((result, item) => ({ bruta: result.bruta + Number(item.facturacionBruta), neta: result.neta + Number(item.facturacionNeta) }), { bruta: 0, neta: 0 });
+    const gastosGenerales = gastos.reduce((total, item) => total + Number(item.monto), 0);
+    return { ...procedimientos, gastosGenerales, gastosTotales: procedimientos.bruta - procedimientos.neta + gastosGenerales, netaFinal: procedimientos.neta - gastosGenerales };
+  }, [allItems, gastos]);
   const itemsFiltrados = useMemo(() => {
     const query = buscarPaciente.trim().toLocaleLowerCase();
     if (!query) return allItems;
-    return allItems.filter((item) => `${item.pacienteNombre || ''} ${item.pacienteApellido || ''}`.toLocaleLowerCase().includes(query));
+    return allItems.filter((item) => `${item.pacienteNombre || ''} ${item.pacienteApellido || ''} ${item.procedimiento || ''}`.toLocaleLowerCase().includes(query));
   }, [allItems, buscarPaciente]);
   const items = itemsFiltrados;
   async function handleDelete(item) {
@@ -541,8 +559,8 @@ function FacturacionPage({ api }) {
   }
   const searchField = <form className="search-bar billing-search" onSubmit={(event) => event.preventDefault()}><Search size={18} /><input aria-label="Buscar paciente en facturación" placeholder="Buscar paciente por nombre o apellido" value={buscarPaciente} onChange={(event) => setBuscarPaciente(event.target.value)} /></form>;
   return <section className="page billing-page">
-    <div className="page-header"><div><span className="eyebrow">Administración</span><h2>Facturación</h2><p className="header-subtitle">Registro de ingresos por procedimientos.</p></div><button className="primary-button patient-action-button" onClick={() => setEditing(emptyFacturacion)}><Plus size={18} />Nueva facturación</button></div>
-    <div className="billing-summary"><div><span>Facturación bruta total</span><strong>{formatCurrency(totals.bruta)}</strong></div><div><span>Facturación neta total</span><strong>{formatCurrency(totals.neta)}</strong></div><div><span>Diferencia total</span><strong>{formatCurrency(totals.bruta - totals.neta)}</strong></div></div>
+    <div className="page-header"><div><span className="eyebrow">Administración</span><h2>Facturación</h2><p className="header-subtitle">Ingresos por procedimientos y gastos generales.</p></div><button className="primary-button patient-action-button" onClick={() => setEditing(emptyFacturacion)}><Plus size={18} />Nuevo registro</button></div>
+    <div className="billing-summary"><div><span>Facturación bruta</span><strong>{formatCurrency(totals.bruta)}</strong></div><div><span>Gastos totales</span><strong>{formatCurrency(totals.gastosTotales)}</strong></div><div><span>Facturación neta</span><strong>{formatCurrency(totals.netaFinal)}</strong></div></div>
     {searchField}
     {error && <div className="form-error wide">{error}</div>}
     <div className="table-wrap billing-table"><table><thead><tr><th>Procedimiento</th><th>Cliente</th><th>Facturación bruta</th><th>Facturación neta</th><th>Diferencia</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>
@@ -550,42 +568,97 @@ function FacturacionPage({ api }) {
       {!loading && items.length === 0 && <tr><td colSpan="7">No hay facturaciones cargadas.</td></tr>}
       {!loading && items.map((item) => <tr key={item.id}><td><strong>{item.procedimiento}</strong></td><td>{item.pacienteApellido}, {item.pacienteNombre}</td><td>{formatCurrency(item.facturacionBruta)}</td><td>{formatCurrency(item.facturacionNeta)}</td><td>{formatCurrency(item.diferencia)}</td><td>{formatDate(item.fecha)}</td><td className="row-actions"><button onClick={() => setEditing(item)}>Editar</button><button className="delete-patient-button" disabled={deletingId === item.id} onClick={() => handleDelete(item)}><Trash2 size={16} />{deletingId === item.id ? 'Eliminando…' : 'Eliminar'}</button></td></tr>)}
     </tbody></table></div>
-    <OtrosGastosPanel api={api} />
+    <OtrosGastosPanel items={gastos} onEdit={(gasto) => setEditing({ ...gasto, tipo: 'GASTO' })} onDeleted={loadData} api={api} />
     {editing && <FacturacionModal api={api} item={editing} pacientes={pacientes} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await loadData(); }} />}
   </section>;
 }
 
-function OtrosGastosPanel({ api }) {
-  const empty = { descripcion: '', categoria: 'Otros', monto: '', fecha: new Date().toLocaleDateString('en-CA'), observacion: '' };
-  const [form, setForm] = useState(empty); const [items, setItems] = useState([]); const [error, setError] = useState('');
-  const load = useCallback(() => api.listOtrosGastos().then(setItems).catch((e) => setError(e.message)), [api]);
-  useEffect(() => { load(); }, [load]);
-  async function submit(event) { event.preventDefault(); setError(''); try { await api.createOtroGasto({ ...form, monto: Number(form.monto) }); setForm(empty); await load(); } catch (e) { setError(e.message); } }
-  return <section className="other-expenses"><h3>Otros gastos</h3><form className="form-grid" onSubmit={submit}><Field label="Descripción" value={form.descripcion} onChange={(v) => setForm({...form, descripcion:v})} required /><Field label="Categoría" value={form.categoria} onChange={(v) => setForm({...form, categoria:v})} required /><Field label="Monto" type="number" value={form.monto} onChange={(v) => setForm({...form, monto:v})} required min="0" step="0.01" /><Field label="Fecha" type="date" value={form.fecha} onChange={(v) => setForm({...form, fecha:v})} required /><TextArea label="Observación" value={form.observacion} onChange={(v) => setForm({...form, observacion:v})} /><button className="primary-button" type="submit">Registrar gasto</button></form>{error && <div className="form-error">{error}</div>}<div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Monto</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td>{formatDate(item.fecha)}</td><td>{item.categoria}</td><td>{item.descripcion}</td><td>{formatCurrency(item.monto)}</td></tr>)}</tbody></table></div></section>;
+function OtrosGastosPanel({ items, onEdit, onDeleted, api }) {
+  const total = items.reduce((sum, item) => sum + Number(item.monto), 0);
+  const [deletingId, setDeletingId] = useState(null);
+  const [error, setError] = useState('');
+  async function remove(item) {
+    if (!window.confirm(`¿Eliminar el gasto "${item.descripcion}"? Esta acción no se puede deshacer.`)) return;
+    setDeletingId(item.id); setError('');
+    try { await api.deleteOtroGasto(item.id); await onDeleted(); }
+    catch (exception) { setError(exception.message); }
+    finally { setDeletingId(null); }
+  }
+  return <section className="other-expenses"><div className="section-heading"><div><span className="eyebrow">Egresos</span><h3>Gastos generales</h3></div><strong>{formatCurrency(total)}</strong></div>{error && <div className="form-error wide">{error}</div>}<div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Concepto</th><th>Monto</th><th>Acciones</th></tr></thead><tbody>{items.length === 0 && <tr><td colSpan="5">No hay gastos generales registrados.</td></tr>}{items.map((item) => <tr key={item.id}><td>{formatDate(item.fecha)}</td><td>{item.categoria}</td><td>{item.descripcion}</td><td>{formatCurrency(item.monto)}</td><td className="row-actions"><button onClick={() => onEdit(item)}>Editar</button><button className="expense-delete-button" disabled={deletingId === item.id} onClick={() => remove(item)}><Trash2 size={15}/>{deletingId === item.id ? 'Eliminando…' : 'Eliminar'}</button></td></tr>)}</tbody></table></div></section>;
 }
 
 function FacturacionModal({ api, item, pacientes, onClose, onSaved }) {
-  const [form, setForm] = useState({ procedimiento: item.procedimiento || '', pacienteId: item.pacienteId || '', facturacionBruta: item.facturacionBruta ?? '', facturacionNeta: item.facturacionNeta ?? '', fecha: item.fecha || new Date().toLocaleDateString('en-CA') });
+  const [form, setForm] = useState({ tipo: item.tipo || 'PROCEDIMIENTO', procedimiento: item.procedimiento || '', pacienteId: item.pacienteId || '', facturacionBruta: item.facturacionBruta ?? '', facturacionNeta: item.facturacionNeta ?? '', concepto: item.descripcion || '', categoria: item.categoria || 'Otros', monto: item.monto ?? '', observacion: item.observacion || '', fecha: item.fecha || new Date().toLocaleDateString('en-CA') });
+  const initialPatient = pacientes.find((paciente) => Number(paciente.id) === Number(item.pacienteId));
+  const [patientSearch, setPatientSearch] = useState(initialPatient ? `${initialPatient.apellido}, ${initialPatient.nombre} · DNI ${initialPatient.dni}` : '');
+  const [showPatientSuggestions, setShowPatientSuggestions] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
+  const patientAutocompleteRef = useRef(null);
   const isEdit = Boolean(item.id); const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
   const difference = Number(form.facturacionBruta || 0) - Number(form.facturacionNeta || 0);
+  const selectedPatient = pacientes.find((paciente) => Number(paciente.id) === Number(form.pacienteId));
+  const selectedPatientLabel = selectedPatient ? `${selectedPatient.apellido}, ${selectedPatient.nombre} · DNI ${selectedPatient.dni}` : '';
+  const filteredPatients = form.pacienteId && patientSearch === selectedPatientLabel
+    ? pacientes
+    : pacientes.filter((paciente) => `${paciente.nombre} ${paciente.apellido} ${paciente.dni}`.toLocaleLowerCase().includes(patientSearch.trim().toLocaleLowerCase()));
+  useEffect(() => {
+    if (!showPatientSuggestions) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      if (!patientAutocompleteRef.current?.contains(event.target)) setShowPatientSuggestions(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setShowPatientSuggestions(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [showPatientSuggestions]);
+  function selectPatient(paciente) {
+    update('pacienteId', String(paciente.id));
+    setPatientSearch(`${paciente.apellido}, ${paciente.nombre} · DNI ${paciente.dni}`);
+    setShowPatientSuggestions(false);
+  }
   async function handleSubmit(event) {
     event.preventDefault(); setError('');
+    if (form.tipo === 'GASTO') {
+      const monto = Number(form.monto);
+      if (!form.concepto.trim() || !Number.isFinite(monto) || monto < 0) { setError('Ingresá un concepto y un monto válido.'); return; }
+      setSaving(true);
+      const payload = { descripcion: form.concepto.trim(), categoria: form.categoria.trim() || 'Otros', monto, fecha: form.fecha, observacion: form.observacion };
+      try { if (isEdit) await api.updateOtroGasto(item.id, payload); else await api.createOtroGasto(payload); onSaved(); }
+      catch (exception) { setError(exception.message); } finally { setSaving(false); }
+      return;
+    }
     const bruta = Number(form.facturacionBruta); const neta = Number(form.facturacionNeta);
+    if (!form.pacienteId || !form.procedimiento.trim()) { setError('Seleccioná un paciente e ingresá el procedimiento.'); return; }
     if (!Number.isFinite(bruta) || !Number.isFinite(neta) || bruta < 0 || neta < 0) { setError('Los importes deben ser números válidos y no negativos.'); return; }
+    if (!isEdit && !confirming) { setConfirming(true); return; }
     setSaving(true);
     try { const payload = { ...form, pacienteId: Number(form.pacienteId), facturacionBruta: bruta, facturacionNeta: neta }; if (isEdit) await api.updateFacturacion(item.id, payload); else await api.createFacturacion(payload); onSaved(); }
     catch (exception) { setError(exception.message); } finally { setSaving(false); }
   }
-  return <div className="modal-backdrop"><section className="modal billing-modal"><div className="modal-header"><h3>{isEdit ? 'Editar facturación' : 'Nueva facturación'}</h3><button onClick={onClose}>Cerrar</button></div><form className="form-grid" onSubmit={handleSubmit}>
-    <Field label="Procedimiento" value={form.procedimiento} onChange={(value) => update('procedimiento', value)} required />
-    <label>Cliente<select value={form.pacienteId} required onChange={(event) => update('pacienteId', event.target.value)}><option value="">Seleccionar cliente</option>{pacientes.map((paciente) => <option key={paciente.id} value={paciente.id}>{paciente.apellido}, {paciente.nombre} · DNI {paciente.dni}</option>)}</select></label>
-    <Field label="Facturación bruta" type="number" value={form.facturacionBruta} onChange={(value) => update('facturacionBruta', value)} required min="0" step="0.01" />
-    <Field label="Facturación neta" type="number" value={form.facturacionNeta} onChange={(value) => update('facturacionNeta', value)} required min="0" step="0.01" />
+  if (confirming) return <div className="modal-backdrop"><section className="modal confirmation-modal"><div className="modal-header"><h3>Confirmar procedimiento</h3><button type="button" onClick={() => setConfirming(false)}>Volver</button></div><div className="confirmation-summary"><p><span>Paciente</span><strong>{selectedPatient?.nombre} {selectedPatient?.apellido}</strong></p><p><span>Procedimiento</span><strong>{form.procedimiento}</strong></p><p><span>Fecha</span><strong>{formatDate(form.fecha)}</strong></p><p><span>Facturación bruta</span><strong>{formatCurrency(form.facturacionBruta)}</strong></p><p><span>Facturación neta</span><strong>{formatCurrency(form.facturacionNeta)}</strong></p></div>{error && <div className="form-error wide">{error}</div>}<div className="form-actions"><button type="button" onClick={onClose}>Cancelar</button><button type="button" className="primary-button" disabled={saving} onClick={handleSubmit}>{saving ? 'Guardando…' : 'Confirmar y guardar'}</button></div></section></div>;
+  return <div className="modal-backdrop"><section className="modal billing-modal"><div className="modal-header"><h3>{isEdit ? (form.tipo === 'GASTO' ? 'Editar gasto general' : 'Editar procedimiento facturado') : 'Nuevo registro'}</h3><button onClick={onClose}>Cerrar</button></div><form className="form-grid" onSubmit={handleSubmit}>
+    {!isEdit && <div className="billing-type-selector"><button type="button" className={form.tipo === 'PROCEDIMIENTO' ? 'active' : ''} onClick={() => update('tipo', 'PROCEDIMIENTO')}><Stethoscope size={18}/>Procedimiento</button><button type="button" className={form.tipo === 'GASTO' ? 'active' : ''} onClick={() => update('tipo', 'GASTO')}><Receipt size={18}/>Gasto general</button></div>}
+    {form.tipo === 'PROCEDIMIENTO' ? <>
+      <Field label="Procedimiento" value={form.procedimiento} onChange={(value) => update('procedimiento', value)} required />
+      <label className="wide patient-picker">Paciente<div className="patient-autocomplete" ref={patientAutocompleteRef}><input type="search" required autoComplete="off" placeholder="Buscar por nombre, apellido o DNI" value={patientSearch} onFocus={() => setShowPatientSuggestions(true)} onClick={() => setShowPatientSuggestions(true)} onChange={(event) => { setPatientSearch(event.target.value); update('pacienteId', ''); setShowPatientSuggestions(true); }} />{showPatientSuggestions && <div className="patient-suggestions">{filteredPatients.length === 0 && <div className="patient-no-results">No se encontraron pacientes</div>}{filteredPatients.map((paciente) => <button type="button" key={paciente.id} onClick={() => selectPatient(paciente)}><strong>{paciente.apellido}, {paciente.nombre}</strong><span>DNI {paciente.dni}</span></button>)}</div>}</div>{form.pacienteId && <span className="patient-selected">Paciente seleccionado</span>}</label>
+      <Field label="Facturación bruta" type="number" value={form.facturacionBruta} onChange={(value) => update('facturacionBruta', value)} required min="0" step="0.01" />
+      <Field label="Facturación neta" type="number" value={form.facturacionNeta} onChange={(value) => update('facturacionNeta', value)} required min="0" step="0.01" />
+      <div className="calculated-field"><span>Gasto / diferencia</span><strong>{formatCurrency(difference)}</strong></div>
+    </> : <>
+      <Field label="Concepto del gasto" value={form.concepto} onChange={(value) => update('concepto', value)} placeholder="Ej.: Alquiler, luz, insumos" required />
+      <Field label="Categoría" value={form.categoria} onChange={(value) => update('categoria', value)} required />
+      <Field label="Monto" type="number" value={form.monto} onChange={(value) => update('monto', value)} required min="0" step="0.01" />
+      <TextArea label="Observación" value={form.observacion} onChange={(value) => update('observacion', value)} />
+    </>}
     <Field label="Fecha" type="date" value={form.fecha} onChange={(value) => update('fecha', value)} required />
-    <div className="calculated-field"><span>Diferencia</span><strong>{formatCurrency(difference)}</strong></div>
-    {pacientes.length === 0 && <div className="form-error wide">Primero debe registrar un paciente para asociarlo a la facturación.</div>}{error && <div className="form-error wide">{error}</div>}
-    <div className="form-actions"><button type="button" onClick={onClose}>Cancelar</button><button type="submit" className="primary-button patient-action-button" disabled={saving || pacientes.length === 0}>{saving ? 'Guardando…' : 'Guardar'}</button></div>
+    {form.tipo === 'PROCEDIMIENTO' && pacientes.length === 0 && <div className="form-error wide">Primero debe registrar un paciente para asociarlo al procedimiento.</div>}{error && <div className="form-error wide">{error}</div>}
+    <div className="form-actions"><button type="button" onClick={onClose}>Cancelar</button><button type="submit" className="primary-button patient-action-button" disabled={saving || (form.tipo === 'PROCEDIMIENTO' && pacientes.length === 0)}>{saving ? 'Guardando…' : form.tipo === 'PROCEDIMIENTO' && !isEdit ? 'Revisar y continuar' : 'Guardar'}</button></div>
   </form></section></div>;
 }
 
@@ -1014,7 +1087,7 @@ function TimelineTab({ title, emptyItem, loadItems, createItem, deleteItem, fiel
       </form>
       <div className="timeline">
         {items.length === 0 && <p className="empty-state">No hay registros cargados.</p>}
-        {items.map((item) => <article className="timeline-item" key={item.id}>{renderItem(item)}{deleteItem && <button type="button" className="delete-patient-button" onClick={async () => { if (!window.confirm('¿Seguro que querés eliminar este procedimiento?')) return; try { await deleteItem(item); await load(); setSuccess('Procedimiento eliminado correctamente'); } catch (exception) { setError(exception.message); } }}>Eliminar</button>}</article>)}
+        {items.map((item) => <article className="timeline-item" key={item.id}>{renderItem(item)}{deleteItem && <button type="button" className="procedure-delete-button" onClick={async () => { if (!window.confirm('¿Seguro que querés eliminar este procedimiento?')) return; try { await deleteItem(item); await load(); setSuccess('Procedimiento eliminado correctamente'); } catch (exception) { setError(exception.message); } }}><Trash2 size={15}/>Eliminar</button>}</article>)}
       </div>
     </div>
   );
@@ -1063,11 +1136,11 @@ function DynamicField({ label, type, value, onChange }) {
   return <Field type={type} label={label} value={value} onChange={onChange} />;
 }
 
-function Field({ label, value, onChange, type = 'text', required = false, min, step }) {
+function Field({ label, value, onChange, type = 'text', required = false, min, step, placeholder }) {
   return (
     <label>
       {label}
-      <input type={type} value={value ?? ''} required={required} min={min} step={step} onChange={(event) => onChange(event.target.value)} />
+      <input type={type} value={value ?? ''} required={required} min={min} step={step} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
