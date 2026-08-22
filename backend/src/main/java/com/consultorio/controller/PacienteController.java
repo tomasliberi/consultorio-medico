@@ -2,6 +2,7 @@ package com.consultorio.controller;
 
 import com.consultorio.dto.paciente.PacienteRequest;
 import com.consultorio.dto.paciente.PacienteResponse;
+import com.consultorio.dto.paciente.CancelacionResponse;
 import com.consultorio.service.PacienteService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -22,9 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PacienteController {
 
     private final PacienteService pacienteService;
+    private final com.consultorio.service.CancelacionService cancelacionService;
 
-    public PacienteController(PacienteService pacienteService) {
+    public PacienteController(PacienteService pacienteService, com.consultorio.service.CancelacionService cancelacionService) {
         this.pacienteService = pacienteService;
+        this.cancelacionService = cancelacionService;
     }
 
     @GetMapping
@@ -47,6 +50,9 @@ public class PacienteController {
     public PacienteResponse actualizar(@PathVariable Long id, @Valid @RequestBody PacienteRequest request) {
         return pacienteService.actualizar(id, request);
     }
+
+    @GetMapping("/{id}/cancelaciones")
+    public List<CancelacionResponse> listarCancelaciones(@PathVariable Long id) { return cancelacionService.listarPorPaciente(id); }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

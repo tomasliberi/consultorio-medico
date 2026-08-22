@@ -192,6 +192,7 @@ function createApiClient() {
     updatePaciente: (id, data) => request(`/pacientes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deletePaciente: (id) => request(`/pacientes/${id}`, { method: 'DELETE' }),
     getHistoria: (pacienteId) => request(`/pacientes/${pacienteId}/historia-clinica`),
+    listCancelaciones: (pacienteId) => request(`/pacientes/${pacienteId}/cancelaciones`),
     updateHistoria: (pacienteId, data) =>
       request(`/pacientes/${pacienteId}/historia-clinica`, { method: 'PUT', body: JSON.stringify(data) }),
     listProcedimientos: (pacienteId) => request(`/pacientes/${pacienteId}/procedimientos`),
@@ -829,6 +830,7 @@ function PacienteModal({ api, paciente, onClose, onSaved }) {
 function PacientePerfilPage({ api, pacienteId, onBack, onOpenAgenda }) {
   const [paciente, setPaciente] = useState(null);
   const [procedimientos, setProcedimientos] = useState([]);
+  const [cancelaciones, setCancelaciones] = useState([]);
   const [editingPaciente, setEditingPaciente] = useState(false);
   const [activeTab, setActiveTab] = useState('datos');
   const [error, setError] = useState('');
@@ -842,6 +844,7 @@ function PacientePerfilPage({ api, pacienteId, onBack, onOpenAgenda }) {
       ]);
       setPaciente(nextPaciente);
       setProcedimientos(nextProcedimientos);
+      setCancelaciones(await api.listCancelaciones(pacienteId));
     } catch (exception) {
       setError(exception.message);
     }
@@ -909,6 +912,7 @@ function PacientePerfilPage({ api, pacienteId, onBack, onOpenAgenda }) {
       {activeTab === 'procedimientos' && (
         <ProcedimientosTab api={api} pacienteId={pacienteId} onItemsLoaded={setProcedimientos} />
       )}
+      <section className="cancellation-history"><h3>Historial de cancelaciones</h3><strong>Cancelaciones totales: {cancelaciones.length}</strong>{cancelaciones.length > 0 && <ul>{cancelaciones.map((item) => <li key={item.id}>{formatDate(item.fechaTurno)} · {item.horaTurno?.slice(0, 5) || 'Sin hora'} <small>Marcado el {formatDateTime(item.canceladoEn)}</small></li>)}</ul>}</section>
       {editingPaciente && (
         <PacienteModal
           api={api}
@@ -1167,6 +1171,11 @@ function formatDate(value) {
   if (!value) return '';
   const [year, month, day] = value.split('-');
   return `${day}/${month}/${year}`;
+}
+
+function formatDateTime(value) {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
 }
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });

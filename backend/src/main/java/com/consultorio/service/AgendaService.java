@@ -30,18 +30,21 @@ public class AgendaService {
     private final PacienteService pacienteService;
     private final ZoneId zoneId;
     private final AuditoriaService auditoriaService;
+    private final CancelacionService cancelacionService;
 
     public AgendaService(
         ConsultaRepository consultaRepository,
         DisponibilidadRepository disponibilidadRepository,
         PacienteService pacienteService,
         AuditoriaService auditoriaService,
+        CancelacionService cancelacionService,
         @Value("${app.zone-id:America/Argentina/Buenos_Aires}") String zoneId
     ) {
         this.consultaRepository = consultaRepository;
         this.disponibilidadRepository = disponibilidadRepository;
         this.pacienteService = pacienteService;
         this.auditoriaService = auditoriaService;
+        this.cancelacionService = cancelacionService;
         this.zoneId = ZoneId.of(zoneId);
     }
 
@@ -148,11 +151,13 @@ public class AgendaService {
         try {
             String normalizado = estado == null ? "" : estado.trim().toUpperCase()
                     .replace("Í", "I").replace("Ó", "O");
+            if ("CANCELADO".equals(normalizado)) normalizado = "CANCELO";
             consulta.setEstado(Consulta.EstadoCita.valueOf(normalizado));
         } catch (Exception exception) {
             throw new IllegalArgumentException("Estado de turno inválido.");
         }
         Consulta actualizada = consultaRepository.save(consulta);
+        cancelacionService.registrarSiCorresponde(actualizada);
         auditoriaService.registrar("MODIFICAR", "CONSULTA", citaId, consulta.getPaciente().getId(), "{\"field\":\"estado\"}");
         return toAgendaEventoResponse(actualizada);
     }
