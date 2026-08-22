@@ -844,7 +844,6 @@ function PacientePerfilPage({ api, pacienteId, onBack, onOpenAgenda }) {
       ]);
       setPaciente(nextPaciente);
       setProcedimientos(nextProcedimientos);
-      setCancelaciones(await api.listCancelaciones(pacienteId));
     } catch (exception) {
       setError(exception.message);
     }
@@ -853,6 +852,10 @@ function PacientePerfilPage({ api, pacienteId, onBack, onOpenAgenda }) {
   useEffect(() => {
     loadPaciente();
   }, [loadPaciente]);
+
+  useEffect(() => {
+    api.listCancelaciones(pacienteId).then(setCancelaciones).catch(() => setCancelaciones([]));
+  }, [api, pacienteId]);
 
   useEffect(() => {
     const handleAgendaUpdate = () => {
