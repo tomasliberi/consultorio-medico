@@ -72,6 +72,9 @@ public class Procedimiento {
     @Column(length = 30)
     private EstadoControl estadoControl = EstadoControl.NO_REQUIERE;
 
+    @Column(nullable = false)
+    private Boolean activo = true;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -101,6 +104,9 @@ public class Procedimiento {
     public void setPaciente(Paciente paciente) {
         this.paciente = paciente;
     }
+
+    public Boolean getActivo() { return activo; }
+    public void setActivo(Boolean activo) { this.activo = activo == null || activo; }
 
     public LocalDate getFecha() {
         return fecha;

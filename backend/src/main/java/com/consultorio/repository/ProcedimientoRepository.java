@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ProcedimientoRepository extends JpaRepository<Procedimiento, Long> {
 
-    List<Procedimiento> findByPacienteIdOrderByFechaDescIdDesc(Long pacienteId);
+    List<Procedimiento> findByPacienteIdAndActivoTrueOrderByFechaDescIdDesc(Long pacienteId);
 
-    List<Procedimiento> findByEstadoControlOrderByFechaControlAsc(EstadoControl estadoControl);
+    List<Procedimiento> findByEstadoControlAndActivoTrueOrderByFechaControlAsc(EstadoControl estadoControl);
 }

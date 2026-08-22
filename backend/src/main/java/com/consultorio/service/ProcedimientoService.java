@@ -32,7 +32,7 @@ public class ProcedimientoService {
     @Transactional(readOnly = true)
     public List<ProcedimientoResponse> listarPorPaciente(Long pacienteId) {
         pacienteService.buscarEntidad(pacienteId);
-        return procedimientoRepository.findByPacienteIdOrderByFechaDescIdDesc(pacienteId).stream()
+        return procedimientoRepository.findByPacienteIdAndActivoTrueOrderByFechaDescIdDesc(pacienteId).stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -44,7 +44,7 @@ public class ProcedimientoService {
 
     @Transactional(readOnly = true)
     public List<ControlPendienteResponse> listarControlesPendientes() {
-        return procedimientoRepository.findByEstadoControlOrderByFechaControlAsc(EstadoControl.PENDIENTE).stream()
+        return procedimientoRepository.findByEstadoControlAndActivoTrueOrderByFechaControlAsc(EstadoControl.PENDIENTE).stream()
                 .map(procedimiento -> new ControlPendienteResponse(
                         procedimiento.getId(),
                         procedimiento.getPaciente().getId(),
@@ -81,7 +81,8 @@ public class ProcedimientoService {
     @Transactional
     public void eliminar(Long id) {
         Procedimiento procedimiento = buscarEntidad(id);
-        procedimientoRepository.delete(procedimiento);
+        procedimiento.setActivo(false);
+        procedimientoRepository.save(procedimiento);
         auditoriaService.registrar("ELIMINAR", "PROCEDIMIENTO", id, procedimiento.getPaciente().getId(),
                 "{\"deleted\":true,\"fecha\":\"" + procedimiento.getFecha() + "\",\"nombre\":\"" + safeAudit(procedimiento.getNombre()) + "\"}");
     }
